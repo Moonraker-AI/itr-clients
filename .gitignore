@@ -1,0 +1,28 @@
+# Node
+node_modules/
+dist/
+build/
+*.log
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# GCP / secrets — never commit these
+*-credentials.json
+*-service-account*.json
+gcp-key*.json
+
+# Build artifacts
+.next/
+out/
