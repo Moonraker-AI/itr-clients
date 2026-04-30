@@ -1,0 +1,13 @@
+# Solo-dev mode: you self-review, but CODEOWNERS surfaces "this path
+# warrants a second look" prompts in the GitHub UI before you merge.
+#
+# Placeholder team — swap @Moonraker-AI/admins for an individual handle
+# once confirmed.
+
+/docs/DESIGN.md             @Moonraker-AI/admins
+/src/lib/state-machine.ts   @Moonraker-AI/admins
+/src/lib/stripe.ts          @Moonraker-AI/admins
+/src/lib/log/redactor.ts    @Moonraker-AI/admins
+/infra/                     @Moonraker-AI/admins
+/.github/                   @Moonraker-AI/admins
+/src/db/migrations/         @Moonraker-AI/admins

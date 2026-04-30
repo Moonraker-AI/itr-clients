@@ -2,26 +2,33 @@
 node_modules/
 dist/
 build/
+*.tsbuildinfo
 *.log
 
-# Env
+# secrets — never commit
 .env
 .env.local
 .env.*.local
-
-# OS
-.DS_Store
-Thumbs.db
-
-# IDE
-.vscode/
-.idea/
-*.swp
+*.json.key
+gmail-sa.json
+service-account*.json
 
 # GCP / secrets — never commit these
 *-credentials.json
 *-service-account*.json
 gcp-key*.json
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+coverage/
+.turbo/
+
+# drizzle studio temp
+.drizzle/
 
 # Build artifacts
 .next/

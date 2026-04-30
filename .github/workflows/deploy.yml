@@ -1,0 +1,58 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+# Don't pile up deploys on the same ref.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write  # required for WIF
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Pick environment
+        id: env
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            echo "env_name=prod" >> "$GITHUB_OUTPUT"
+            echo "project=${{ vars.GCP_PROJECT_ID_PROD }}" >> "$GITHUB_OUTPUT"
+            echo "deployer_sa=${{ vars.GCP_DEPLOYER_SA_PROD }}" >> "$GITHUB_OUTPUT"
+            echo "runtime_sa=itr-app@${{ vars.GCP_PROJECT_ID_PROD }}.iam.gserviceaccount.com" >> "$GITHUB_OUTPUT"
+            echo "cloud_sql_instance=${{ vars.GCP_PROJECT_ID_PROD }}:${{ vars.GCP_REGION }}:itr-postgres-prod" >> "$GITHUB_OUTPUT"
+          else
+            echo "env_name=dev" >> "$GITHUB_OUTPUT"
+            echo "project=${{ vars.GCP_PROJECT_ID_DEV }}" >> "$GITHUB_OUTPUT"
+            echo "deployer_sa=${{ vars.GCP_DEPLOYER_SA_DEV }}" >> "$GITHUB_OUTPUT"
+            echo "runtime_sa=itr-app@${{ vars.GCP_PROJECT_ID_DEV }}.iam.gserviceaccount.com" >> "$GITHUB_OUTPUT"
+            echo "cloud_sql_instance=${{ vars.GCP_PROJECT_ID_DEV }}:${{ vars.GCP_REGION }}:itr-postgres-dev" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Auth to GCP via WIF
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ steps.env.outputs.deployer_sa }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Submit Cloud Build
+        run: |
+          gcloud builds submit \
+            --project=${{ steps.env.outputs.project }} \
+            --region=${{ vars.GCP_REGION }} \
+            --config=infra/cloudbuild.yaml \
+            --substitutions=_PROJECT=${{ steps.env.outputs.project }},_REGION=${{ vars.GCP_REGION }},_SERVICE=itr-client-hq,_RUNTIME_SA=${{ steps.env.outputs.runtime_sa }},_CLOUD_SQL_INSTANCE=${{ steps.env.outputs.cloud_sql_instance }} \
+            .
