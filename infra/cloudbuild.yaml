@@ -16,7 +16,7 @@ steps:
     args:
       - build
       - --file=infra/Dockerfile
-      - --tag=$_REGION-docker.pkg.dev/$_PROJECT/itr/itr-client-hq:$COMMIT_SHA
+      - --tag=$_REGION-docker.pkg.dev/$_PROJECT/itr/itr-client-hq:$_COMMIT_SHA
       - --tag=$_REGION-docker.pkg.dev/$_PROJECT/itr/itr-client-hq:latest
       - --cache-from=$_REGION-docker.pkg.dev/$_PROJECT/itr/itr-client-hq:latest
       - .
@@ -35,7 +35,7 @@ steps:
       - run
       - deploy
       - $_SERVICE
-      - --image=$_REGION-docker.pkg.dev/$_PROJECT/itr/itr-client-hq:$COMMIT_SHA
+      - --image=$_REGION-docker.pkg.dev/$_PROJECT/itr/itr-client-hq:$_COMMIT_SHA
       - --project=$_PROJECT
       - --region=$_REGION
       - --service-account=$_RUNTIME_SA
@@ -55,7 +55,7 @@ options:
   dynamicSubstitutions: true
 
 images:
-  - $_REGION-docker.pkg.dev/$_PROJECT/itr/itr-client-hq:$COMMIT_SHA
+  - $_REGION-docker.pkg.dev/$_PROJECT/itr/itr-client-hq:$_COMMIT_SHA
   - $_REGION-docker.pkg.dev/$_PROJECT/itr/itr-client-hq:latest
 
 timeout: 1200s
