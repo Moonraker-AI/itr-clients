@@ -54,5 +54,5 @@ jobs:
             --project=${{ steps.env.outputs.project }} \
             --region=${{ vars.GCP_REGION }} \
             --config=infra/cloudbuild.yaml \
-            --substitutions=_PROJECT=${{ steps.env.outputs.project }},_REGION=${{ vars.GCP_REGION }},_SERVICE=itr-client-hq,_RUNTIME_SA=${{ steps.env.outputs.runtime_sa }},_CLOUD_SQL_INSTANCE=${{ steps.env.outputs.cloud_sql_instance }} \
+            --substitutions=COMMIT_SHA=${{ github.sha }},_PROJECT=${{ steps.env.outputs.project }},_REGION=${{ vars.GCP_REGION }},_SERVICE=itr-client-hq,_RUNTIME_SA=${{ steps.env.outputs.runtime_sa }},_CLOUD_SQL_INSTANCE=${{ steps.env.outputs.cloud_sql_instance }} \
             .
