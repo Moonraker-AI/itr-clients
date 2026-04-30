@@ -53,6 +53,7 @@ jobs:
           gcloud builds submit \
             --project=${{ steps.env.outputs.project }} \
             --region=${{ vars.GCP_REGION }} \
+            --service-account=projects/${{ steps.env.outputs.project }}/serviceAccounts/${{ steps.env.outputs.deployer_sa }} \
             --config=infra/cloudbuild.yaml \
             --substitutions=COMMIT_SHA=${{ github.sha }},_PROJECT=${{ steps.env.outputs.project }},_REGION=${{ vars.GCP_REGION }},_SERVICE=itr-client-hq,_RUNTIME_SA=${{ steps.env.outputs.runtime_sa }},_CLOUD_SQL_INSTANCE=${{ steps.env.outputs.cloud_sql_instance }} \
             .
