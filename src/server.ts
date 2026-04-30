@@ -3,11 +3,14 @@ import { Hono } from 'hono';
 
 const app = new Hono();
 
-// Cloud Run uses TCP probes by default, but a real /healthz is useful
-// for uptime monitors and the future load balancer.
-app.get('/healthz', (c) =>
-  c.json({ ok: true, ts: new Date().toISOString() }),
-);
+// Cloud Run uses TCP probes by default, but a real health endpoint
+// is useful for uptime monitors and the future load balancer.
+// Note: Google Frontend reserves `/healthz` on *.run.app domains and
+// intercepts it before the container. Use `/health` as the primary.
+const health = (c: import('hono').Context) =>
+  c.json({ ok: true, ts: new Date().toISOString() });
+app.get('/health', health);
+app.get('/healthz', health);
 
 app.get('/', (c) =>
   c.text(`ITR Client HQ — ${process.env.K_REVISION ?? 'local'}\n`),
