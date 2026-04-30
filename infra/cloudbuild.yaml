@@ -1,0 +1,61 @@
+# Build → push → deploy. Triggered by .github/workflows/deploy.yml,
+# which auths via WIF and submits this build to the target project's
+# Cloud Build.
+#
+# Substitutions are passed in by the workflow:
+#   _PROJECT, _REGION, _SERVICE, _RUNTIME_SA, _CLOUD_SQL_INSTANCE
+#
+# TODO (M1): insert a `migrate` step between push and deploy. Needs a
+# private Cloud Build pool with VPC access (~$0.21/hr active) so it can
+# reach Cloud SQL on the private IP — or run as a Cloud Run Job.
+# Decision deferred until we have actual schema to migrate.
+
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --file=infra/Dockerfile
+      - --tag=$_REGION-docker.pkg.dev/$_PROJECT/itr/itr-client-hq:$COMMIT_SHA
+      - --tag=$_REGION-docker.pkg.dev/$_PROJECT/itr/itr-client-hq:latest
+      - --cache-from=$_REGION-docker.pkg.dev/$_PROJECT/itr/itr-client-hq:latest
+      - .
+
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - --all-tags
+      - $_REGION-docker.pkg.dev/$_PROJECT/itr/itr-client-hq
+
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - $_SERVICE
+      - --image=$_REGION-docker.pkg.dev/$_PROJECT/itr/itr-client-hq:$COMMIT_SHA
+      - --project=$_PROJECT
+      - --region=$_REGION
+      - --service-account=$_RUNTIME_SA
+      - --no-allow-unauthenticated
+      - --ingress=all
+      - --min-instances=0
+      - --max-instances=5
+      - --cpu=1
+      - --memory=512Mi
+      - --concurrency=80
+      - --timeout=60s
+      - --set-env-vars=NODE_ENV=production,CLOUD_SQL_INSTANCE=$_CLOUD_SQL_INSTANCE
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8
+  dynamicSubstitutions: true
+
+images:
+  - $_REGION-docker.pkg.dev/$_PROJECT/itr/itr-client-hq:$COMMIT_SHA
+  - $_REGION-docker.pkg.dev/$_PROJECT/itr/itr-client-hq:latest
+
+timeout: 1200s

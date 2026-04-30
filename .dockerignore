@@ -1,0 +1,14 @@
+node_modules
+dist
+.git
+.github
+.gitignore
+.dockerignore
+docs
+*.md
+!README.md
+.env*
+coverage
+.vscode
+.idea
+infra

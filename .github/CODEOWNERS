@@ -1,0 +1,10 @@
+# Solo-dev mode: you self-review, but CODEOWNERS surfaces "this path
+# warrants a second look" prompts in the GitHub UI before you merge.
+
+/docs/DESIGN.md             @Moonraker-AI
+/src/lib/state-machine.ts   @Moonraker-AI
+/src/lib/stripe.ts          @Moonraker-AI
+/src/lib/log/redactor.ts    @Moonraker-AI
+/infra/                     @Moonraker-AI
+/.github/                   @Moonraker-AI
+/src/db/migrations/         @Moonraker-AI
