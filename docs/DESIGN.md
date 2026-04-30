@@ -3,8 +3,8 @@
 > Client management system for [Intensive Therapy Retreats](https://www.intensivetherapyretreat.com).
 > Replaces the GoHighLevel-based intake, consent, and billing flow.
 
-**Status:** Planning complete, pre-implementation
-**Last updated:** April 27, 2026
+**Status:** M0 complete (skeleton deployed to dev), implementation in progress
+**Last updated:** April 30, 2026
 
 ---
 
@@ -79,44 +79,50 @@ ITR runs intensive trauma-therapy retreats across 4 locations (Northampton MA, E
 
 ## 3. GCP project layout
 
-Two GCP projects under one organization:
+Two GCP projects under one organization. Names diverged from the original plan — `itr-prod-phi` and `itr-dev` were taken globally — so the actual project IDs are namespaced with `itr-clients-`:
 
 ```
-itr-prod-phi              ← all PHI lives here, BAA covers it
+itr-clients-prod-phi      project number 3904364585
+                          ← all PHI lives here, BAA covers it
   - Cloud Run service: itr-client-hq
-  - Cloud SQL: itr-postgres-prod
-  - Cloud Storage: itr-consents-prod, itr-pdf-archive-prod
-  - Secret Manager: stripe-keys, gmail-svc-account, etc.
-  - VPC with Private Service Connect to Cloud SQL
+  - Cloud SQL:        itr-postgres-prod
+  - Cloud Storage:    itr-consents-prod, itr-pdf-archive-prod
+  - Secret Manager:   db-url, stripe-secret-key, stripe-webhook-secret,
+                      gmail-service-account
+  - Artifact Registry: itr (us-central1, Docker)
+  - Workload Identity Federation pool (federates GitHub Actions for both
+    environments; lives here because it is the prod project)
+  - VPC + Private Service Connect to Cloud SQL (private IP only)
   - Org policy: deny non-HIPAA-eligible APIs
 
-itr-dev                   ← dev + staging, NO real PHI ever
-  - Cloud Run service: itr-client-hq-dev
-  - Cloud SQL: itr-postgres-dev
-  - Cloud Storage: itr-consents-dev
-  - Same shape, fake/seed data only
+itr-clients-dev           project number 270821220116
+                          ← dev + staging, NO real PHI ever
+  - Cloud Run service: itr-client-hq
+  - Cloud SQL:        itr-postgres-dev
+  - Cloud Storage:    itr-consents-dev
+  - Secret Manager:   db-url, stripe-* (test mode keys), gmail-service-account
+  - Artifact Registry: itr (us-central1, Docker)
+  - Same shape, synthetic data only
 ```
 
-**Hard rule:** real client data only ever lands in `itr-prod-phi`, after the GCP BAA is executed and the project's HIPAA flags are set. Dev is for synthetic data. CI gates enforce that a dev branch can never deploy to prod.
+**Hard rule:** real client data only ever lands in `itr-clients-prod-phi`, after the GCP BAA is executed and the project's HIPAA flags are set. Dev is for synthetic data. CI gates enforce that a dev branch can never deploy to prod.
 
-### Project bootstrap (one-time, manual, ~30 min)
+### Project bootstrap (one-time, manual)
 
-This work has to happen with a human super-admin in the console. Do not try to automate.
+This work has happened. The full provisioning record — project creation, BAA execution, CMEK, IAM bindings, WIF pool/provider, secrets, Artifact Registry, Cloud SQL — lives in [`GCP_BOOTSTRAP.md`](GCP_BOOTSTRAP.md). Outline of what was done:
 
-1. Create GCP organization (if not already) and the two projects above
-2. Execute GCP BAA at the org level via the Cloud Console (Security → Compliance → BAA)
-3. Enable billing on both projects
-4. Apply org policy denying non-HIPAA-eligible APIs on `itr-prod-phi`
-5. Enable APIs: Cloud Run, Cloud SQL Admin, Cloud Storage, Secret Manager, Cloud Build, Artifact Registry, IAM
-6. Create CMEK keys in Cloud KMS, applied to Cloud SQL + Cloud Storage
-7. Create service account `itr-deployer@...` with narrow roles:
-   - Cloud Run Admin
-   - Cloud SQL Client
-   - Cloud Storage Admin (specific buckets only)
-   - Secret Manager Accessor
-   - Cloud Build Editor
-8. Configure **Workload Identity Federation** from GitHub Actions → no long-lived JSON key
-9. Enforce MFA on all GCP and Workspace admin accounts
+1. Org created; two projects created under it
+2. GCP BAA executed at org level
+3. Billing enabled on both projects
+4. Org policy denying non-HIPAA-eligible APIs on `itr-clients-prod-phi`
+5. Required APIs enabled (Cloud Run, Cloud SQL Admin, Cloud Storage, Secret Manager, Cloud Build, Artifact Registry, IAM, Service Networking, KMS)
+6. CMEK keys created in Cloud KMS and applied to Cloud SQL + Cloud Storage buckets
+7. Service accounts created per env:
+   - `itr-deployer-{dev,prod}@…` — CI deployer (Workload Identity-bound)
+   - `itr-app@…` — Cloud Run runtime SA
+8. Workload Identity Federation pool + GitHub provider configured (no long-lived JSON keys)
+9. Cloud SQL instances on private IP only; reached via the Cloud SQL Node.js Connector at runtime
+10. MFA enforced on all GCP and Workspace admin accounts
 
 ---
 
@@ -463,7 +469,7 @@ itr-clients/
 │   └── README.md                    # GCP setup checklist
 ├── docs/
 │   ├── DESIGN.md                    # this file
-│   └── GCP_BOOTSTRAP.md             # step-by-step setup guide (TODO)
+│   └── GCP_BOOTSTRAP.md             # what's provisioned + how it was done
 ├── .env.example
 ├── drizzle.config.ts
 ├── package.json
@@ -476,17 +482,18 @@ itr-clients/
 
 Each milestone is independently shippable to dev. M5 is the gate to going live with real clients.
 
-### M0 — GCP bootstrap & BAAs (1–2 days, partly admin)
+### M0 — GCP bootstrap & BAAs (DONE)
 
-- Two GCP projects (`itr-prod-phi`, `itr-dev`)
+- Two GCP projects (`itr-clients-prod-phi`, `itr-clients-dev`)
 - GCP BAA executed at org level
 - Workspace BAA verified covers Gmail
 - Stripe BAA in motion
-- Cloud Run service stub deployed, hello-world reachable
-- Cloud SQL + Cloud Storage provisioned in both projects
-- CI pipeline: push to `main` → deploy dev; tagged release → deploy prod
+- Cloud Run service `itr-client-hq` deployed to dev, hello-world reachable behind IAM auth
+- Cloud SQL + Cloud Storage provisioned in both projects (private IP only)
+- CI pipeline: push to `main` → deploy dev; tag `v*` → deploy prod (via WIF)
 - Workload Identity Federation from GitHub Actions configured (no JSON keys)
-- Drizzle migration #001 applied (empty schema)
+- Drizzle scaffolding committed (lazy client + empty schema + migration runner). **Migrations are NOT yet wired into `infra/cloudbuild.yaml`** — deferred to M1, when we'll either use a Cloud Build private pool with VPC access or run migrations as a Cloud Run Job.
+- Health endpoint: `/health` (NOT `/healthz` — Google Frontend reserves `/healthz` on `*.run.app` URLs and intercepts it before the container)
 
 ### M1 — Therapists, locations, pricing (1 day)
 
@@ -609,6 +616,75 @@ Not blocking v1, but worth deciding before v1.5:
 | 14 | Identity Platform (deferred) for auth | GCP-native, covered by GCP BAA, Workspace SSO option |
 | 15 | Pricing snapshotted onto retreat at creation | Critical for in-flight retreat correctness over time |
 | 16 | Single `notify()` function with config-driven recipients | Adding emails = config change, not code change |
+| 17 | Stripe PHI rules anchored in §16 (this doc) and enforced in `src/lib/stripe.ts` | Single source of truth for the §1179 boundary; CONTRIBUTING.md checklist references it |
+
+---
+
+## 16. Stripe PHI rules (HIPAA §1179 boundary)
+
+Stripe operates under HIPAA's §1179 payment-processing exemption. The exemption holds **only if PHI never enters Stripe systems.** Stripe is not under our BAA — they don't sign one for the §1179 path. Every Stripe field we populate must be assumed to be subject-access-requestable, dump-able, and retained beyond our control. Treat the integration as a one-way door: opaque IDs in, payment status out.
+
+### What never goes into any Stripe field
+
+- Diagnoses, conditions, treatment types
+- Therapist-written narrative or intake notes
+- Document/consent content
+- Date-of-birth (use Stripe's identity verification flows if ever required, never raw DOB in metadata)
+- State of residence beyond billing country/region
+- Anything that, combined with the customer's name, would reveal clinical context
+
+### Field-by-field rules
+
+**`Customer` object**
+
+| Field | Rule |
+|---|---|
+| `name` | First + last OK (standard payment data; covered by §1179) |
+| `email` | OK |
+| `phone` | OK (used for receipt SMS) |
+| `description` | Set only to a generic constant — never a clinical descriptor. Allowed: `"ITR client"`. |
+| `metadata.client_id` | Opaque UUID only |
+| `metadata.retreat_id` | Opaque UUID only |
+| `metadata.*` | Opaque IDs only — never include treatment context, location, therapist, dates, or any clinical detail |
+| `address` | Skip unless billing chargeback flow demands it |
+
+**`PaymentIntent` and `Checkout Session`**
+
+| Field | Rule |
+|---|---|
+| `description` | Generic only — `"Retreat services"`, `"Retreat services - N days"`, `"Retreat deposit"`. Never include client name, condition, or treatment type. |
+| `metadata` | Same opaque-ID rule as `Customer` |
+| `statement_descriptor` / `statement_descriptor_suffix` | Generic merchant name. Never `"ITR Trauma Tx"` or any clinical hint |
+| `receipt_email` | OK (this is the payment receipt path; client's email is already in §1179 scope) |
+
+**`Refund` object**
+
+| Field | Rule |
+|---|---|
+| `reason` | Use Stripe's enum values only (`requested_by_customer`, `duplicate`, `fraudulent`) |
+| `metadata` | Same opaque-ID rule. Never put narrative reasoning about clinical or treatment context |
+
+**Webhooks**
+
+- All Stripe events return through our handler. PHI-relevant correlation is done by `metadata.retreat_id` lookup → DB.
+- Webhook handlers MUST NOT log raw event bodies. The PHI-redactor middleware (M1+) is enforced on all `console.log`/error paths; webhook code is no exception.
+
+### Enforcement
+
+- **Single wrapper module: `src/lib/stripe.ts`.** All Stripe API calls go through it. Direct `stripe-node` imports outside this module are a bug; CI lint catches them (M3+).
+- The wrapper:
+  - Validates `description` against an allow-list of generic strings.
+  - Rejects `metadata` values that look like emails, phone numbers, dates, or have length > 50 chars.
+  - Rejects any metadata key not in a configured allow-list (`client_id`, `retreat_id`, `payment_kind`, etc.).
+- The Stripe PHI checkpoint in [`CONTRIBUTING.md`](../CONTRIBUTING.md) is mandatory for every PR touching the wrapper or any Stripe call site.
+- A periodic audit (M7+ admin tooling) lists all Stripe `Customer` + `PaymentIntent` records and flags any field that doesn't match these rules.
+
+### If a violation is discovered
+
+1. Stop. Do not deploy further changes that depend on the violating field.
+2. Rotate any data that should not be in Stripe — typically by overwriting the field via API.
+3. File an incident note (audit log entry) with the affected `retreat_id` and the field that leaked.
+4. Update the wrapper validator to make the same class of leak impossible going forward.
 
 ---
 
