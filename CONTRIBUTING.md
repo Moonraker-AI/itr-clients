@@ -7,9 +7,9 @@ before sending a PR.
 
 1. **No PHI in Stripe.** Stripe operates under HIPAA's §1179 payment-
    processing exemption. The exemption holds *only if PHI never enters
-   their systems.* See `docs/DESIGN.md §2 (stack table)` and
-   `§6 (Stripe flow)` for the rules. Every PR that touches Stripe code
-   gets the discipline checklist below.
+   their systems.* See `docs/DESIGN.md §16` for the field-by-field
+   rules (and §6 for the surrounding payment flow). Every PR that
+   touches Stripe code gets the discipline checklist below.
 
 2. **No PHI in logs.** The redactor middleware (M1+) runs on all log
    output. Until then, never `console.log(req.body)` or dump client

@@ -63,7 +63,7 @@ async function buildPool(): Promise<pg.Pool> {
     ...clientOpts,
     user: decodeURIComponent(dbUrl.username),
     password: decodeURIComponent(dbUrl.password),
-    database: dbUrl.pathname.replace(/^\//, '') || 'itr',
+    database: dbUrl.pathname.replace(/^\//, '') || 'itr_app',
     max: 5, // Cloud Run is small + scales to zero. Keep it tight.
   });
 }
