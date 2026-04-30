@@ -5,8 +5,10 @@ deliberately deferred. This is the runbook a future maintainer can read
 to either re-create the environment or operate on it.
 
 > **Snapshot date:** 2026-04-30. Provisioning happened earlier the same
-> day. If you're reading this much later, run the verification block at
-> the bottom to confirm what's still true.
+> day. PHI-blocker hardening pass landed later that day (CMEK on prod
+> buckets, prod deployer IAM grants, default compute SAs disabled).
+> If you're reading this much later, run the verification block at the
+> bottom to confirm what's still true.
 
 ---
 
@@ -113,20 +115,27 @@ the Cloud SQL Connector to it.
 - `itr-clients-dev_cloudbuild` — auto-created by Cloud Build for source
   staging (do not touch by hand)
 
-**TODO (compliance gap):** The CMEK keys (`storage-key` in
-`itr-keyring`) exist but are **not currently bound** to the prod
-buckets. All buckets are using Google-managed encryption. Bind before
-landing real PHI:
+**CMEK status:** Both prod buckets are now bound to `storage-key`
+(applied 2026-04-30 during the PHI-blocker hardening pass). All NEW
+objects encrypt under the CMEK key. The buckets were empty at rebind
+time so there is no legacy-key data to rotate.
 
+The Cloud Storage service agent
+`service-3904364585@gs-project-accounts.iam.gserviceaccount.com` holds
+`roles/cloudkms.cryptoKeyEncrypterDecrypter` on `storage-key`, which is
+what makes the binding work.
+
+Verify any time:
 ```
-gcloud storage buckets update gs://itr-consents-prod \
-  --default-encryption-key=projects/itr-clients-prod-phi/locations/us-central1/keyRings/itr-keyring/cryptoKeys/storage-key
-gcloud storage buckets update gs://itr-pdf-archive-prod \
-  --default-encryption-key=projects/itr-clients-prod-phi/locations/us-central1/keyRings/itr-keyring/cryptoKeys/storage-key
+for B in itr-consents-prod itr-pdf-archive-prod; do
+  echo -n "$B: "
+  gcloud storage buckets describe gs://$B --format=json | grep default_kms_key
+done
 ```
 
-Also enable uniform bucket-level access + object versioning on the prod
-buckets if not already (the introspection didn't surface a value).
+**Remaining TODO:** Confirm uniform bucket-level access + object
+versioning on the prod buckets (the introspection didn't surface a
+value).
 
 ---
 
@@ -158,8 +167,22 @@ Same secret name scheme in both projects (different values):
 | `gmail-service-account` | JSON for the Gmail-API service account with domain-wide delegation. |
 
 All replication is currently default-`automatic` (multi-region). No
-CMEK applied — `secrets-key` exists but isn't bound. **TODO: bind
-prod secrets to `secrets-key` before real PHI lands.**
+CMEK applied — `secrets-key` exists but isn't bound.
+
+**Status:** Deferred (decision 2026-04-30). Secrets contain
+**credentials, not PHI** (DB password, Stripe keys, Gmail SA JSON).
+HIPAA encryption-at-rest applies to PHI-bearing data; credentials are
+governed by separate auth controls (rotation, IAM, MFA — all in place).
+CMEK on Secret Manager is best-practice / defense-in-depth, not a real-
+PHI blocker.
+
+If/when binding CMEK is undertaken: each existing secret must be
+**recreated** because automatic-replication secrets cannot be migrated
+to user-managed-replication-with-CMEK in place. Procedure per secret:
+read latest value → delete → create with `--replication-policy=user-
+managed --locations=us-central1 --kms-key-name=…/secrets-key` → add
+the saved value as a new version. Coordinate with a maintenance window
+because the running Cloud Run service reads these secrets.
 
 The runtime SA (`itr-app@`) has `roles/secretmanager.secretAccessor`
 project-wide. Tighten to per-secret bindings in a later pass if you want.
@@ -174,7 +197,7 @@ project-wide. Tighten to per-secret bindings in a later pass if you want.
 |---|---|---|
 | `itr-app@itr-clients-dev.iam.gserviceaccount.com` | ITR Client HQ runtime | Cloud Run runtime SA |
 | `itr-deployer-dev@itr-clients-dev.iam.gserviceaccount.com` | ITR Client HQ deployer (dev) | CI deployer (Workload Identity-bound) |
-| `270821220116-compute@developer.gserviceaccount.com` | Default compute service account | Auto-created. Unused. Remove or disable later. |
+| `270821220116-compute@developer.gserviceaccount.com` | Default compute service account | Auto-created. **Disabled 2026-04-30** (had over-broad `roles/editor`; nothing in this project uses it). Re-enable with `gcloud iam service-accounts enable …` if a new GCE workload ever needs it. |
 
 ### `itr-clients-prod-phi`
 
@@ -183,7 +206,7 @@ project-wide. Tighten to per-secret bindings in a later pass if you want.
 | `itr-app@itr-clients-prod-phi.iam.gserviceaccount.com` | ITR Client HQ runtime | Cloud Run runtime SA |
 | `itr-deployer-prod@itr-clients-prod-phi.iam.gserviceaccount.com` | ITR Client HQ deployer (prod) | CI deployer |
 | `gmail-sender@itr-clients-prod-phi.iam.gserviceaccount.com` | Gmail API sender | Domain-wide-delegation SA used by Gmail API |
-| `3904364585-compute@developer.gserviceaccount.com` | Default compute SA | Auto-created. Unused. |
+| `3904364585-compute@developer.gserviceaccount.com` | Default compute SA | Auto-created. **Disabled 2026-04-30** (same reason as dev). |
 
 ### IAM bindings (current)
 
@@ -206,18 +229,10 @@ Add `roles/storage.objectAdmin` on the relevant GCS buckets when M2 starts uploa
 - `roles/cloudbuild.builds.editor`
 - `roles/iam.serviceAccountUser`
 - `roles/run.admin`
-- *missing:* `roles/serviceusage.serviceUsageConsumer`
-- *missing:* `roles/storage.admin`
+- `roles/serviceusage.serviceUsageConsumer` *(added 2026-04-30, mirrors dev)*
+- `roles/storage.admin` *(added 2026-04-30, mirrors dev)*
 
-**TODO:** grant the missing two on prod before the first `v*` tag deploy. Same fix as dev:
-
-```
-SA=serviceAccount:itr-deployer-prod@itr-clients-prod-phi.iam.gserviceaccount.com
-gcloud projects add-iam-policy-binding itr-clients-prod-phi \
-  --member="$SA" --role=roles/serviceusage.serviceUsageConsumer --condition=None
-gcloud projects add-iam-policy-binding itr-clients-prod-phi \
-  --member="$SA" --role=roles/storage.admin --condition=None
-```
+Prod deployer is now ready for the first `v*` tag deploy.
 
 ---
 
@@ -325,16 +340,21 @@ Secrets. There are no long-lived JSON keys anywhere.
 
 ## 13. Known gaps / TODOs
 
-These are tracked here rather than scattered through the doc:
+Status as of the 2026-04-30 PHI-blocker hardening pass:
 
-- [ ] **Prod deployer SA** missing `serviceusage.serviceUsageConsumer` + `storage.admin` (§8). Block on first `v*` tag deploy until fixed.
-- [ ] **CMEK on GCS buckets** (`storage-key`) not bound (§5). Block before real PHI lands in `itr-consents-prod`.
-- [ ] **CMEK on Secret Manager** (`secrets-key`) not bound (§7). Block before real PHI lands.
+**Closed:**
+- [x] **Prod deployer SA** has `serviceusage.serviceUsageConsumer` + `storage.admin` (§8).
+- [x] **CMEK on GCS buckets** (`storage-key`) bound to `itr-consents-prod` and `itr-pdf-archive-prod` (§5).
+- [x] **Default compute SAs** disabled in both projects (§8).
+
+**Deferred (not real-PHI blockers; defense-in-depth):**
+- [ ] **CMEK on Secret Manager** (`secrets-key`) — secrets hold credentials, not PHI; recreation required, coordinate during a maintenance window (§7).
 - [ ] **CMEK on dev Cloud SQL** for parity (§4) — nice-to-have.
-- [ ] **Migration runner** not yet wired into `infra/cloudbuild.yaml`. Decision deferred to M1: private Cloud Build pool with VPC access vs. Cloud Run Job.
-- [ ] **PHI redactor middleware** not yet implemented (lands M1).
-- [ ] **Org policy** denying non-HIPAA-eligible APIs on prod — verify enforcement in console; introspection didn't surface specific deny rules.
-- [ ] **Unused default compute SAs** (both projects) — disable when convenient.
+- [ ] **Org policy** denying non-HIPAA-eligible APIs on prod — `orgpolicy.googleapis.com` is now enabled but zero policies are attached. Real fix is either Assured Workloads HIPAA blueprint (paid) or custom org-policy work at org-admin level. Operational mitigation: CONTRIBUTING.md requires a DESIGN.md update for any new external dependency, and the deployer SA cannot enable APIs from CI.
+
+**M1 milestone work (separate from hardening):**
+- [ ] **Migration runner** not yet wired into `infra/cloudbuild.yaml`. Decision: private Cloud Build pool with VPC access vs. Cloud Run Job.
+- [ ] **PHI redactor middleware** not yet implemented.
 
 ---
 
