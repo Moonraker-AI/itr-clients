@@ -1,9 +1,11 @@
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 
+import { stripeWebhookRoute } from './routes/api/webhooks-stripe.js';
 import { adminClientsDetailRoute } from './routes/admin/clients-detail.js';
 import { adminClientsNewRoute } from './routes/admin/clients-new.js';
 import { adminPricingRoute } from './routes/admin/pricing.js';
+import { publicCheckoutRoute } from './routes/public/checkout.js';
 import { publicConsentsRoute } from './routes/public/consents.js';
 import { log } from './lib/phi-redactor.js';
 
@@ -26,6 +28,8 @@ app.route('/admin/pricing', adminPricingRoute);
 app.route('/admin/clients/new', adminClientsNewRoute);
 app.route('/admin/clients', adminClientsDetailRoute);
 app.route('/c', publicConsentsRoute);
+app.route('/c', publicCheckoutRoute);
+app.route('/api/webhooks/stripe', stripeWebhookRoute);
 
 app.notFound((c) => c.json({ error: 'not_found' }, 404));
 
