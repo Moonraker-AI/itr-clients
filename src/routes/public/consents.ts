@@ -296,7 +296,13 @@ async function loadNextUnsigned(retreatId: string): Promise<UnsignedTemplate | n
     .where(eq(consentSignatures.retreatId, retreatId));
   const signedSet = new Set(signed.map((s) => s.templateId));
 
-  const next = required.find((r) => !signedSet.has(r.templateId));
+  // Only signature-required templates participate in the signing queue.
+  // Informational templates (requires_signature=false, e.g. the Notice of
+  // Privacy Practices) live on the status list but never gate progression
+  // to awaiting_deposit.
+  const next = required.find(
+    (r) => r.requiresSignature && !signedSet.has(r.templateId),
+  );
   if (!next) return null;
   return {
     ...next,
