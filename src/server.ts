@@ -1,7 +1,9 @@
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 
+import { adminClientsNewRoute } from './routes/admin/clients-new.js';
 import { adminPricingRoute } from './routes/admin/pricing.js';
+import { publicConsentsRoute } from './routes/public/consents.js';
 import { log } from './lib/phi-redactor.js';
 
 const app = new Hono();
@@ -20,6 +22,8 @@ app.get('/', (c) =>
 );
 
 app.route('/admin/pricing', adminPricingRoute);
+app.route('/admin/clients/new', adminClientsNewRoute);
+app.route('/c', publicConsentsRoute);
 
 app.notFound((c) => c.json({ error: 'not_found' }, 404));
 

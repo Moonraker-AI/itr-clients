@@ -2,10 +2,8 @@
  * Retreat state machine — the spine of the system (DESIGN.md §5).
  *
  * Every state mutation MUST go through a transition function in this module.
- * Each transition validates the source state, performs side effects in later
- * milestones (DB write, Stripe call, email send), writes an audit_event, and
- * fires notifications. M1 ships the skeleton + the transition graph; bodies
- * are filled in M2+ as the dependent tables and integrations land.
+ * Each transition validates the source state, performs side effects, writes
+ * an `audit_event`, and fires notifications.
  *
  *   draft
  *     → awaiting_consents
@@ -16,7 +14,24 @@
  *               → completed
  *               ↘ final_charge_failed → completed   (via recovery)
  *     ↘ cancelled (any time before completed)
+ *
+ * As of M2 phase 2: `sendConsentPackage`, `markConsentsSigned`, `cancel`
+ * are wired. Stripe + scheduling transitions land in M3+ (still throw).
  */
+
+import { and, eq } from 'drizzle-orm';
+
+import { getDb } from '../db/client.js';
+import {
+  auditEvents,
+  clients,
+  consentSignatures,
+  consentTemplates,
+  retreatRequiredConsents,
+  retreats,
+} from '../db/schema.js';
+import { notify } from './notifications.js';
+import { log } from './phi-redactor.js';
 
 export const RETREAT_STATES = [
   'draft',
@@ -65,41 +80,230 @@ export function assertTransition(
   if (!canTransition(from, to)) throw new IllegalTransitionError(from, to);
 }
 
-/**
- * Transition stubs. Bodies land per milestone:
- *   - sendConsentPackage: M2 (consent + Gmail)
- *   - markConsentsSigned: M2
- *   - markDepositPaid:   M3 (Stripe webhook)
- *   - confirmDates:      M4
- *   - markInProgress:    M4 cron
- *   - submitCompletion:  M5
- *   - markCompleted:     M5
- *   - markFinalChargeFailed / recoverFinalCharge: M6
- *   - cancel: M2+ (allowed from any pre-completed state)
- *
- * The shape is identical: ({ retreatId, actor, ...input }) → Promise<void>.
- * Each will (1) load retreat + assertTransition, (2) run side effects, (3)
- * write the audit event, (4) notify(event_type, retreat_id), all in a single
- * transaction where the DB write is the commit point.
- */
 type RetreatId = string;
-type Actor =
+export type Actor =
   | { kind: 'therapist'; id: string }
   | { kind: 'client'; token: string }
   | { kind: 'system' }
   | { kind: 'stripe'; eventId: string };
+
+function actorToColumns(a: Actor): { actorType: 'therapist' | 'client' | 'system' | 'stripe'; actorId: string | null } {
+  switch (a.kind) {
+    case 'therapist':
+      return { actorType: 'therapist', actorId: a.id };
+    case 'client':
+      return { actorType: 'client', actorId: a.token };
+    case 'system':
+      return { actorType: 'system', actorId: null };
+    case 'stripe':
+      return { actorType: 'stripe', actorId: a.eventId };
+  }
+}
+
+/**
+ * Public host for token-bearing client URLs. Cloud Run sets `K_SERVICE` and
+ * the workflow injects `PUBLIC_BASE_URL` once a custom domain is wired up;
+ * fall back to the *.run.app origin while we're still on the default URL.
+ */
+function publicBaseUrl(): string {
+  return (
+    process.env.PUBLIC_BASE_URL ??
+    'https://itr-client-hq-buejbopu5q-uc.a.run.app'
+  );
+}
+
+function adminBaseUrl(): string {
+  return process.env.ADMIN_BASE_URL ?? publicBaseUrl();
+}
 
 const NOT_IMPLEMENTED = (where: string) => {
   throw new Error(`state-machine: ${where} not implemented yet`);
 };
 
 export const transitions = {
-  sendConsentPackage(_args: { retreatId: RetreatId; actor: Actor }) {
-    NOT_IMPLEMENTED('sendConsentPackage');
+  /**
+   * draft → awaiting_consents.
+   *
+   * Caller (admin form) must already have inserted the retreat row in
+   * `draft` and seeded `retreat_required_consents` with the snapshotted
+   * template versions. This function:
+   *   - validates the transition
+   *   - flips `retreats.state`
+   *   - writes audit_event
+   *   - emails the client + team@ via notify()
+   */
+  async sendConsentPackage(args: {
+    retreatId: RetreatId;
+    actor: Actor;
+  }): Promise<void> {
+    const { db } = await getDb();
+
+    const result = await db.transaction(async (tx) => {
+      const [r] = await tx.select().from(retreats).where(eq(retreats.id, args.retreatId));
+      if (!r) throw new Error(`retreat not found: ${args.retreatId}`);
+      assertTransition(r.state, 'awaiting_consents');
+
+      const required = await tx
+        .select({ templateId: retreatRequiredConsents.templateId })
+        .from(retreatRequiredConsents)
+        .where(eq(retreatRequiredConsents.retreatId, args.retreatId));
+      if (required.length === 0) {
+        throw new Error('retreat has no required consents — admin form must seed them');
+      }
+
+      await tx
+        .update(retreats)
+        .set({ state: 'awaiting_consents', updatedAt: new Date() })
+        .where(eq(retreats.id, args.retreatId));
+
+      const { actorType, actorId } = actorToColumns(args.actor);
+      await tx.insert(auditEvents).values({
+        retreatId: args.retreatId,
+        actorType,
+        actorId,
+        eventType: 'consent_package_sent',
+        payload: { required_template_count: required.length },
+      });
+
+      return { client_token: r.clientToken, client_id: r.clientId };
+    });
+
+    const [client] = await db
+      .select({ email: clients.email, firstName: clients.firstName })
+      .from(clients)
+      .where(eq(clients.id, result.client_id));
+    if (!client) throw new Error(`client row missing for retreat ${args.retreatId}`);
+
+    await notify({
+      event: 'consent_package_sent',
+      retreatId: args.retreatId,
+      clientEmail: client.email,
+      clientFirstName: client.firstName,
+      clientPortalUrl: `${publicBaseUrl()}/c/${result.client_token}/consents`,
+    });
+
+    log.info('state_transition', {
+      retreatId: args.retreatId,
+      to: 'awaiting_consents',
+    });
   },
-  markConsentsSigned(_args: { retreatId: RetreatId; actor: Actor }) {
-    NOT_IMPLEMENTED('markConsentsSigned');
+
+  /**
+   * awaiting_consents → awaiting_deposit.
+   *
+   * Called by the public sign route once the last required signature lands.
+   * Validates that every `retreat_required_consents` row whose template
+   * `requires_signature=true` has at least one `consent_signatures` row.
+   */
+  async markConsentsSigned(args: {
+    retreatId: RetreatId;
+    actor: Actor;
+  }): Promise<void> {
+    const { db } = await getDb();
+
+    await db.transaction(async (tx) => {
+      const [r] = await tx.select().from(retreats).where(eq(retreats.id, args.retreatId));
+      if (!r) throw new Error(`retreat not found: ${args.retreatId}`);
+      assertTransition(r.state, 'awaiting_deposit');
+
+      const required = await tx
+        .select({
+          templateId: retreatRequiredConsents.templateId,
+          requiresSignature: consentTemplates.requiresSignature,
+        })
+        .from(retreatRequiredConsents)
+        .innerJoin(
+          consentTemplates,
+          eq(retreatRequiredConsents.templateId, consentTemplates.id),
+        )
+        .where(eq(retreatRequiredConsents.retreatId, args.retreatId));
+
+      const signedTemplateIds = new Set(
+        (
+          await tx
+            .select({ templateId: consentSignatures.templateId })
+            .from(consentSignatures)
+            .where(eq(consentSignatures.retreatId, args.retreatId))
+        ).map((s) => s.templateId),
+      );
+
+      const missing = required
+        .filter((r) => r.requiresSignature && !signedTemplateIds.has(r.templateId))
+        .map((r) => r.templateId);
+      if (missing.length > 0) {
+        throw new Error(`required signatures missing: ${missing.join(', ')}`);
+      }
+
+      await tx
+        .update(retreats)
+        .set({ state: 'awaiting_deposit', updatedAt: new Date() })
+        .where(eq(retreats.id, args.retreatId));
+
+      const { actorType, actorId } = actorToColumns(args.actor);
+      await tx.insert(auditEvents).values({
+        retreatId: args.retreatId,
+        actorType,
+        actorId,
+        eventType: 'consents_signed',
+        payload: { required_count: required.length },
+      });
+    });
+
+    await notify({
+      event: 'consents_signed',
+      retreatId: args.retreatId,
+      adminUrl: `${adminBaseUrl()}/admin/clients/${args.retreatId}`,
+    });
+
+    log.info('state_transition', {
+      retreatId: args.retreatId,
+      to: 'awaiting_deposit',
+    });
   },
+
+  /**
+   * <any pre-completed state> → cancelled. Reason is stored on the audit
+   * event payload; client-facing copy is intentionally generic.
+   */
+  async cancel(args: {
+    retreatId: RetreatId;
+    actor: Actor;
+    reason?: string;
+  }): Promise<void> {
+    const { db } = await getDb();
+
+    await db.transaction(async (tx) => {
+      const [r] = await tx.select().from(retreats).where(eq(retreats.id, args.retreatId));
+      if (!r) throw new Error(`retreat not found: ${args.retreatId}`);
+      assertTransition(r.state, 'cancelled');
+
+      await tx
+        .update(retreats)
+        .set({ state: 'cancelled', updatedAt: new Date() })
+        .where(eq(retreats.id, args.retreatId));
+
+      const { actorType, actorId } = actorToColumns(args.actor);
+      await tx.insert(auditEvents).values({
+        retreatId: args.retreatId,
+        actorType,
+        actorId,
+        eventType: 'cancelled',
+        payload: args.reason ? { reason: args.reason } : {},
+      });
+    });
+
+    await notify({
+      event: 'cancelled',
+      retreatId: args.retreatId,
+      adminUrl: `${adminBaseUrl()}/admin/clients/${args.retreatId}`,
+    });
+
+    log.info('state_transition', {
+      retreatId: args.retreatId,
+      to: 'cancelled',
+    });
+  },
+
   markDepositPaid(_args: {
     retreatId: RetreatId;
     actor: Actor;
@@ -141,7 +345,5 @@ export const transitions = {
   }) {
     NOT_IMPLEMENTED('markFinalChargeFailed');
   },
-  cancel(_args: { retreatId: RetreatId; actor: Actor; reason?: string }) {
-    NOT_IMPLEMENTED('cancel');
-  },
 } as const;
+
