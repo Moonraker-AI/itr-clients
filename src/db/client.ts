@@ -52,7 +52,25 @@ async function buildPool(): Promise<pg.Pool> {
 
   const instance = requireEnv('CLOUD_SQL_INSTANCE');
   const dbUrl = new URL(requireEnv('DB_URL'));
+  const user = decodeURIComponent(dbUrl.username);
+  const password = decodeURIComponent(dbUrl.password);
+  const database = dbUrl.pathname.replace(/^\//, '') || 'itr_app';
 
+  // Migration path: Cloud Run Job mounts /cloudsql/<INSTANCE> as a unix
+  // socket via --add-cloudsql-instances. No VPC config required.
+  if (process.env.MIGRATE_VIA_SOCKET === '1') {
+    return new pg.Pool({
+      host: `/cloudsql/${instance}`,
+      user,
+      password,
+      database,
+      max: 2,
+    });
+  }
+
+  // Runtime path: mTLS-encrypted, IAM-authenticated tunnel via the Cloud SQL
+  // Node.js Connector to the instance's PRIVATE IP. Requires Cloud Run
+  // VPC egress (configured at the service level).
   const connector = new Connector();
   const clientOpts = await connector.getOptions({
     instanceConnectionName: instance,
@@ -61,9 +79,9 @@ async function buildPool(): Promise<pg.Pool> {
 
   return new pg.Pool({
     ...clientOpts,
-    user: decodeURIComponent(dbUrl.username),
-    password: decodeURIComponent(dbUrl.password),
-    database: dbUrl.pathname.replace(/^\//, '') || 'itr_app',
+    user,
+    password,
+    database,
     max: 5, // Cloud Run is small + scales to zero. Keep it tight.
   });
 }

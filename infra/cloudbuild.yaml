@@ -1,14 +1,14 @@
-# Build → push → deploy. Triggered by .github/workflows/deploy.yml,
+# Build → push → migrate → deploy. Triggered by .github/workflows/deploy.yml,
 # which auths via WIF and submits this build to the target project's
 # Cloud Build.
 #
 # Substitutions are passed in by the workflow:
 #   _PROJECT, _REGION, _SERVICE, _RUNTIME_SA, _CLOUD_SQL_INSTANCE
 #
-# TODO (M1): insert a `migrate` step between push and deploy. Needs a
-# private Cloud Build pool with VPC access (~$0.21/hr active) so it can
-# reach Cloud SQL on the private IP — or run as a Cloud Run Job.
-# Decision deferred until we have actual schema to migrate.
+# Migrations run in a Cloud Run Job (`itr-migrate`) that uses the same image
+# as the service. The Job mounts the Cloud SQL instance via
+# --add-cloudsql-instances (unix socket at /cloudsql/<INSTANCE>) so it does
+# not need VPC connector or private-pool plumbing.
 
 steps:
   - id: build
@@ -27,6 +27,42 @@ steps:
       - push
       - --all-tags
       - $_REGION-docker.pkg.dev/$_PROJECT/itr/itr-client-hq
+
+  - id: migrate-deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        IMAGE="$_REGION-docker.pkg.dev/$_PROJECT/itr/itr-client-hq:$COMMIT_SHA"
+        # `jobs deploy` is upsert: creates the job on first run, updates after.
+        gcloud run jobs deploy itr-migrate \
+          --image="$$IMAGE" \
+          --project=$_PROJECT \
+          --region=$_REGION \
+          --service-account=$_RUNTIME_SA \
+          --add-cloudsql-instances=$_CLOUD_SQL_INSTANCE \
+          --set-env-vars=NODE_ENV=production,CLOUD_SQL_INSTANCE=$_CLOUD_SQL_INSTANCE,MIGRATE_VIA_SOCKET=1 \
+          --set-secrets=DB_URL=db-url:latest \
+          --command=node \
+          --args=dist/db/migrate.js \
+          --max-retries=0 \
+          --task-timeout=300s \
+          --cpu=1 \
+          --memory=512Mi
+
+  - id: migrate-execute
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - run
+      - jobs
+      - execute
+      - itr-migrate
+      - --project=$_PROJECT
+      - --region=$_REGION
+      - --wait
 
   - id: deploy
     name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
@@ -48,6 +84,7 @@ steps:
       - --concurrency=80
       - --timeout=60s
       - --set-env-vars=NODE_ENV=production,CLOUD_SQL_INSTANCE=$_CLOUD_SQL_INSTANCE
+      - --set-secrets=DB_URL=db-url:latest
 
 options:
   logging: CLOUD_LOGGING_ONLY
@@ -58,4 +95,4 @@ images:
   - $_REGION-docker.pkg.dev/$_PROJECT/itr/itr-client-hq:$COMMIT_SHA
   - $_REGION-docker.pkg.dev/$_PROJECT/itr/itr-client-hq:latest
 
-timeout: 1200s
+timeout: 1800s

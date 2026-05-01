@@ -22,6 +22,9 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
 COPY --from=builder /app/dist ./dist
+# Drizzle migrations are plain .sql files; tsc doesn't copy them.
+# Migration runner reads them from this path at runtime (Cloud Run Job).
+COPY --from=builder /app/src/db/migrations ./dist/db/migrations
 
 USER node
 EXPOSE 8080
