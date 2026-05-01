@@ -50,7 +50,10 @@ steps:
           --max-retries=0 \
           --task-timeout=300s \
           --cpu=1 \
-          --memory=512Mi
+          --memory=512Mi \
+          --network=default \
+          --subnet=default \
+          --vpc-egress=private-ranges-only
 
   - id: migrate-execute
     name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
@@ -85,6 +88,12 @@ steps:
       - --timeout=60s
       - --set-env-vars=NODE_ENV=production,CLOUD_SQL_INSTANCE=$_CLOUD_SQL_INSTANCE
       - --set-secrets=DB_URL=db-url:latest
+      # Direct VPC egress so the Cloud SQL Node.js Connector can reach the
+      # instance's private IP. private-ranges-only keeps public traffic on
+      # Cloud Run's default egress (no NAT cost).
+      - --network=default
+      - --subnet=default
+      - --vpc-egress=private-ranges-only
 
 options:
   logging: CLOUD_LOGGING_ONLY
