@@ -42,7 +42,7 @@ steps:
           --project=$_PROJECT \
           --region=$_REGION \
           --service-account=$_RUNTIME_SA \
-          --add-cloudsql-instances=$_CLOUD_SQL_INSTANCE \
+          --set-cloudsql-instances=$_CLOUD_SQL_INSTANCE \
           --set-env-vars=NODE_ENV=production,CLOUD_SQL_INSTANCE=$_CLOUD_SQL_INSTANCE,MIGRATE_VIA_SOCKET=1 \
           --set-secrets=DB_URL=db-url:latest \
           --command=node \
