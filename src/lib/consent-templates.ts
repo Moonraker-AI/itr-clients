@@ -193,3 +193,66 @@ export function renderTemplate(input: RenderTemplateInput): RenderedTemplate {
   const t = getTemplate(input.templateName);
   return { meta: t.meta, body: substitute(t.body, input.vars) };
 }
+
+/**
+ * Idempotent: ensure every (name, version) loaded from disk exists in
+ * `consent_templates`. Existing rows are NEVER modified — DESIGN.md §7
+ * requires published versions to be immutable. New rows are inserted with
+ * `published_at = now()`.
+ *
+ * Returns a map keyed by template name → DB row id of the LATEST version
+ * known on disk (which is also the latest in DB after this call).
+ */
+export async function syncConsentTemplatesToDb(): Promise<
+  Map<string, { id: string; version: number; requiresSignature: boolean }>
+> {
+  // Late import — keep this module DB-free for the smoke harness.
+  const { getDb } = await import('../db/client.js');
+  const { consentTemplates } = await import('../db/schema.js');
+  const { and, eq } = await import('drizzle-orm');
+
+  const { db } = await getDb();
+  const out = new Map<
+    string,
+    { id: string; version: number; requiresSignature: boolean }
+  >();
+
+  for (const t of loadTemplates().values()) {
+    const existing = await db
+      .select({
+        id: consentTemplates.id,
+        version: consentTemplates.version,
+        requiresSignature: consentTemplates.requiresSignature,
+      })
+      .from(consentTemplates)
+      .where(
+        and(
+          eq(consentTemplates.name, t.meta.name),
+          eq(consentTemplates.version, t.meta.version),
+        ),
+      );
+
+    let row = existing[0];
+    if (!row) {
+      const inserted = await db
+        .insert(consentTemplates)
+        .values({
+          name: t.meta.name,
+          version: t.meta.version,
+          bodyMarkdown: t.body,
+          requiredFields: t.meta.requiredFields,
+          requiresSignature: t.meta.requiresSignature,
+          publishedAt: new Date(),
+          active: true,
+        })
+        .returning({
+          id: consentTemplates.id,
+          version: consentTemplates.version,
+          requiresSignature: consentTemplates.requiresSignature,
+        });
+      row = inserted[0]!;
+    }
+    out.set(t.meta.name, row);
+  }
+  return out;
+}
