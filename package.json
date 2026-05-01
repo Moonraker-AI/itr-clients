@@ -29,7 +29,8 @@
     "js-yaml": "^4.1.1",
     "marked": "^18.0.2",
     "pg": "^8.13.0",
-    "react": "^19.2.5"
+    "react": "^19.2.5",
+    "stripe": "^22.1.0"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",

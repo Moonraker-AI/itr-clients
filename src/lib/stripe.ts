@@ -1,0 +1,311 @@
+/**
+ * Single Stripe wrapper module (DESIGN.md §16).
+ *
+ * EVERY Stripe API call MUST go through this module. Direct `stripe-node`
+ * imports outside this file are a CI lint violation (added in M3+).
+ *
+ * Why: Stripe operates under HIPAA's §1179 payment-processing exemption.
+ * The exemption holds only if PHI never enters Stripe systems. This wrapper
+ * enforces the §16 field-by-field rules:
+ *   - description must match an allow-list of generic strings
+ *   - metadata keys must match an allow-list
+ *   - metadata values must NOT look like emails / phones / dates / >50 chars
+ *   - statement_descriptor uses the org's generic merchant name
+ *
+ * Validation throws synchronously before any HTTP call so a violation is
+ * surfaced in tests + admin UI, never silently committed to a Stripe row.
+ *
+ * Dev mode: when `STRIPE_SECRET_KEY` is unset the wrapper auto-dry-runs:
+ * customer + session creation return synthetic ids, no network call. Lets
+ * the admin form + state machine exercise their happy path without a key.
+ */
+
+import Stripe from 'stripe';
+
+import { log } from './phi-redactor.js';
+
+const ALLOWED_DESCRIPTIONS = new Set<string>([
+  'ITR client',
+  'Retreat services',
+  'Retreat services - 0.5 days',
+  'Retreat services - 1 day',
+  'Retreat services - 1.5 days',
+  'Retreat services - 2 days',
+  'Retreat services - 2.5 days',
+  'Retreat services - 3 days',
+  'Retreat services - 3.5 days',
+  'Retreat services - 4 days',
+  'Retreat services - 4.5 days',
+  'Retreat services - 5 days',
+  'Retreat deposit',
+  'Retreat balance',
+  'Retreat refund',
+]);
+
+const ALLOWED_METADATA_KEYS = new Set<string>([
+  'client_id',
+  'retreat_id',
+  'payment_kind',
+  'stripe_customer_id',
+]);
+
+const STATEMENT_DESCRIPTOR = 'ITR Retreats';
+
+const EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/;
+const PHONE_RE = /\d{3}[\s.-]?\d{3}[\s.-]?\d{4}/;
+const DATE_RE = /\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4})\b/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SHORT_TOKEN_RE = /^[a-z_]+$/; // payment_kind etc.
+
+class StripePhiViolation extends Error {
+  constructor(public readonly field: string, message: string) {
+    super(`Stripe PHI rule violation on ${field}: ${message}`);
+    this.name = 'StripePhiViolation';
+  }
+}
+
+function assertDescription(d: string | undefined): void {
+  if (d == null) return;
+  if (!ALLOWED_DESCRIPTIONS.has(d)) {
+    throw new StripePhiViolation(
+      'description',
+      `"${d}" is not in the allow-list (DESIGN §16)`,
+    );
+  }
+}
+
+function assertMetadata(meta: Record<string, string> | undefined): void {
+  if (!meta) return;
+  for (const [key, value] of Object.entries(meta)) {
+    if (!ALLOWED_METADATA_KEYS.has(key)) {
+      throw new StripePhiViolation(
+        `metadata.${key}`,
+        `key not in allow-list (DESIGN §16)`,
+      );
+    }
+    if (typeof value !== 'string') {
+      throw new StripePhiViolation(
+        `metadata.${key}`,
+        `value must be a string, got ${typeof value}`,
+      );
+    }
+    if (value.length > 50) {
+      throw new StripePhiViolation(
+        `metadata.${key}`,
+        `value exceeds 50 chars`,
+      );
+    }
+    if (EMAIL_RE.test(value)) {
+      throw new StripePhiViolation(`metadata.${key}`, 'value looks like an email');
+    }
+    if (PHONE_RE.test(value)) {
+      throw new StripePhiViolation(`metadata.${key}`, 'value looks like a phone');
+    }
+    if (DATE_RE.test(value)) {
+      throw new StripePhiViolation(`metadata.${key}`, 'value looks like a date');
+    }
+    // UUIDs and short snake_case tokens (payment_kind values) are explicitly
+    // allowed shapes. Anything else gets flagged conservatively.
+    if (
+      !UUID_RE.test(value) &&
+      !SHORT_TOKEN_RE.test(value) &&
+      !/^[A-Za-z0-9_-]+$/.test(value)
+    ) {
+      throw new StripePhiViolation(
+        `metadata.${key}`,
+        'value contains characters outside the opaque-id shape',
+      );
+    }
+  }
+}
+
+let cachedClient: Stripe | null = null;
+
+function getClient(): Stripe | null {
+  if (cachedClient) return cachedClient;
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) return null; // dry-run mode
+  cachedClient = new Stripe(key, {
+    appInfo: { name: 'itr-client-hq', version: '0.3.0' },
+  });
+  return cachedClient;
+}
+
+function dryRun(): boolean {
+  return !process.env.STRIPE_SECRET_KEY;
+}
+
+/**
+ * Find or create the Stripe Customer for a client. Stores only non-PHI
+ * billing data — name + email + a generic description (DESIGN §16).
+ */
+export interface UpsertCustomerArgs {
+  clientId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  /** Existing stripe_customer_id from stripe_customers row, if any. */
+  existingStripeCustomerId?: string;
+}
+
+export interface UpsertCustomerResult {
+  stripeCustomerId: string;
+  dryRun: boolean;
+}
+
+export async function upsertCustomer(
+  args: UpsertCustomerArgs,
+): Promise<UpsertCustomerResult> {
+  const desc = 'ITR client';
+  assertDescription(desc);
+  const metadata = { client_id: args.clientId };
+  assertMetadata(metadata);
+
+  if (dryRun()) {
+    const stripeCustomerId =
+      args.existingStripeCustomerId ?? `cus_dryrun_${args.clientId.slice(0, 8)}`;
+    log.info('stripe_dry_run_upsert_customer', { clientId: args.clientId, stripeCustomerId });
+    return { stripeCustomerId, dryRun: true };
+  }
+
+  const client = getClient()!;
+  if (args.existingStripeCustomerId) {
+    const updated = await client.customers.update(args.existingStripeCustomerId, {
+      name: `${args.firstName} ${args.lastName}`,
+      email: args.email,
+      description: desc,
+      metadata,
+    });
+    return { stripeCustomerId: updated.id, dryRun: false };
+  }
+  const created = await client.customers.create({
+    name: `${args.firstName} ${args.lastName}`,
+    email: args.email,
+    description: desc,
+    metadata,
+  });
+  return { stripeCustomerId: created.id, dryRun: false };
+}
+
+/**
+ * Create a Checkout Session for the deposit. Captures the payment method so
+ * the final balance can be charged off-session at retreat completion
+ * (M5).
+ */
+export interface CreateDepositSessionArgs {
+  clientId: string;
+  retreatId: string;
+  stripeCustomerId: string;
+  depositCents: number;
+  /** 'card' for now; ACH path lands later via Customer Portal. */
+  paymentMethod: 'card';
+  successUrl: string;
+  cancelUrl: string;
+}
+
+export interface CreateSessionResult {
+  sessionId: string;
+  url: string;
+  dryRun: boolean;
+}
+
+export async function createDepositCheckoutSession(
+  args: CreateDepositSessionArgs,
+): Promise<CreateSessionResult> {
+  const description = 'Retreat deposit';
+  assertDescription(description);
+  const metadata = {
+    client_id: args.clientId,
+    retreat_id: args.retreatId,
+    payment_kind: 'deposit',
+  };
+  assertMetadata(metadata);
+
+  if (dryRun()) {
+    const sessionId = `cs_dryrun_${args.retreatId.slice(0, 8)}`;
+    log.info('stripe_dry_run_checkout_session', {
+      retreatId: args.retreatId,
+      sessionId,
+      amount: args.depositCents,
+    });
+    return { sessionId, url: args.successUrl, dryRun: true };
+  }
+
+  const client = getClient()!;
+  const session = await client.checkout.sessions.create({
+    mode: 'payment',
+    customer: args.stripeCustomerId,
+    payment_method_types: [args.paymentMethod],
+    line_items: [
+      {
+        price_data: {
+          currency: 'usd',
+          unit_amount: args.depositCents,
+          product_data: { name: description },
+        },
+        quantity: 1,
+      },
+    ],
+    payment_intent_data: {
+      // Save the card on the Customer for the off-session final charge.
+      setup_future_usage: 'off_session',
+      description,
+      metadata,
+      statement_descriptor_suffix: STATEMENT_DESCRIPTOR.slice(0, 22),
+    },
+    metadata,
+    success_url: args.successUrl,
+    cancel_url: args.cancelUrl,
+  });
+
+  return {
+    sessionId: session.id,
+    url: session.url ?? args.successUrl,
+    dryRun: false,
+  };
+}
+
+/**
+ * Webhook signature verification. Returns the parsed Stripe event or null
+ * (and logs) on a bad signature — caller should respond 400 in that case.
+ */
+export function verifyWebhookSignature(args: {
+  rawBody: string;
+  signatureHeader: string;
+}): Stripe.Event | null {
+  const secret = process.env.STRIPE_WEBHOOK_SECRET;
+  if (!secret) {
+    log.error('stripe_webhook_secret_unset', {});
+    return null;
+  }
+  const client = getClient();
+  if (!client) {
+    log.error('stripe_secret_key_unset_for_webhook', {});
+    return null;
+  }
+  try {
+    return client.webhooks.constructEvent(args.rawBody, args.signatureHeader, secret);
+  } catch (err) {
+    log.error('stripe_webhook_signature_invalid', {
+      error: (err as Error).message,
+    });
+    return null;
+  }
+}
+
+/**
+ * Retrieve a Checkout Session — used by the success page to confirm payment.
+ */
+export async function getCheckoutSession(
+  sessionId: string,
+): Promise<Stripe.Checkout.Session | null> {
+  if (dryRun()) {
+    return null;
+  }
+  const client = getClient()!;
+  return client.checkout.sessions.retrieve(sessionId, {
+    expand: ['payment_intent'],
+  });
+}
+
+export { StripePhiViolation };

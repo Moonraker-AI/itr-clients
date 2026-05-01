@@ -19,7 +19,7 @@
  * are wired. Stripe + scheduling transitions land in M3+ (still throw).
  */
 
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 
 import { getDb } from '../db/client.js';
 import {
@@ -27,6 +27,7 @@ import {
   clients,
   consentSignatures,
   consentTemplates,
+  payments,
   retreatRequiredConsents,
   retreats,
 } from '../db/schema.js';
@@ -304,12 +305,89 @@ export const transitions = {
     });
   },
 
-  markDepositPaid(_args: {
+  /**
+   * Records a successful deposit payment. Called from the Stripe webhook
+   * handler on `checkout.session.completed` (deposit) or
+   * `payment_intent.succeeded` for the deposit kind.
+   *
+   * Idempotent on `stripePaymentIntentId` — duplicate webhook deliveries
+   * are absorbed silently.
+   *
+   * NOTE: this does NOT change `retreats.state`. The state stays at
+   * `awaiting_deposit` until `confirmDates` (M4) flips it to `scheduled`
+   * — the design's "scheduled" precondition is BOTH deposit paid AND
+   * dates confirmed (DESIGN §5).
+   */
+  async markDepositPaid(args: {
     retreatId: RetreatId;
     actor: Actor;
-    paymentIntentId: string;
-  }) {
-    NOT_IMPLEMENTED('markDepositPaid');
+    stripePaymentIntentId: string;
+    stripeChargeId?: string;
+    amountCents: number;
+  }): Promise<void> {
+    const { db } = await getDb();
+
+    const upserted = await db.transaction(async (tx) => {
+      const [r] = await tx.select().from(retreats).where(eq(retreats.id, args.retreatId));
+      if (!r) throw new Error(`retreat not found: ${args.retreatId}`);
+      // No assertTransition: this writes a payment + audit but does not
+      // touch state. State transition graph is unchanged.
+
+      const inserted = await tx
+        .insert(payments)
+        .values({
+          retreatId: args.retreatId,
+          kind: 'deposit',
+          stripePaymentIntentId: args.stripePaymentIntentId,
+          stripeChargeId: args.stripeChargeId ?? null,
+          amountCents: args.amountCents,
+          status: 'succeeded',
+          attemptCount: 1,
+          lastAttemptedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: payments.stripePaymentIntentId,
+          set: {
+            status: 'succeeded',
+            stripeChargeId: args.stripeChargeId ?? null,
+            updatedAt: new Date(),
+            attemptCount: sql`${payments.attemptCount} + 1`,
+            lastAttemptedAt: new Date(),
+          },
+        })
+        .returning({ id: payments.id });
+
+      const isNew = inserted.length > 0;
+      const { actorType, actorId } = actorToColumns(args.actor);
+      if (isNew) {
+        await tx.insert(auditEvents).values({
+          retreatId: args.retreatId,
+          actorType,
+          actorId,
+          eventType: 'deposit_paid',
+          payload: {
+            stripe_payment_intent_id: args.stripePaymentIntentId,
+            amount_cents: args.amountCents,
+          },
+        });
+      }
+      return { isNew };
+    });
+
+    if (upserted.isNew) {
+      await notify({
+        event: 'deposit_paid',
+        retreatId: args.retreatId,
+        adminUrl: `${adminBaseUrl()}/admin/clients/${args.retreatId}`,
+      });
+    }
+
+    log.info('payment_recorded', {
+      retreatId: args.retreatId,
+      kind: 'deposit',
+      stripePaymentIntentId: args.stripePaymentIntentId,
+      isNew: upserted.isNew,
+    });
   },
   confirmDates(_args: {
     retreatId: RetreatId;

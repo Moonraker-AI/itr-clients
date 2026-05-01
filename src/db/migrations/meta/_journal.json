@@ -15,6 +15,13 @@
       "when": 1777620261709,
       "tag": "0001_condemned_deathbird",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1777644897574,
+      "tag": "0002_light_puff_adder",
+      "breakpoints": true
     }
   ]
 }

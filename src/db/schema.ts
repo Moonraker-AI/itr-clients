@@ -5,7 +5,7 @@
  * M2: clients, retreats, consent_templates, consent_signatures, audit_events,
  *     email_log, notification_recipients. Adds affirm_uplift_pct and
  *     cancellation_admin_fee_cents to pricing_config.
- * Later milestones add: stripe_customers, payments (M3+).
+ * M3: stripe_customers, payments. Adds payment_kind, payment_status enums.
  *
  * Conventions:
  *   - UUID primary keys (defaultRandom).
@@ -64,6 +64,15 @@ export const emailStatus = pgEnum('email_status', [
   'delivered',
   'bounced',
   'complained',
+]);
+
+export const paymentKind = pgEnum('payment_kind', ['deposit', 'final', 'refund']);
+
+export const paymentStatus = pgEnum('payment_status', [
+  'pending',
+  'succeeded',
+  'failed',
+  'refunded',
 ]);
 
 export const locations = pgTable('locations', {
@@ -345,6 +354,62 @@ export const notificationRecipients = pgTable(
   }),
 );
 
+/**
+ * Stripe Customer linkage. One row per client. Stripe Customer holds
+ * non-PHI billing info only (DESIGN.md §16). The default payment method
+ * id is the saved card/ACH source we re-charge off-session at retreat
+ * completion.
+ */
+export const stripeCustomers = pgTable('stripe_customers', {
+  clientId: uuid('client_id')
+    .primaryKey()
+    .references(() => clients.id, { onDelete: 'cascade' }),
+  stripeCustomerId: text('stripe_customer_id').notNull().unique(),
+  defaultPaymentMethodId: text('default_payment_method_id'),
+  paymentMethodType: text('payment_method_type'),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+/**
+ * Payment intents and refunds (DESIGN.md §9). One row per Stripe
+ * PaymentIntent or Refund attempt. Idempotency on stripe_payment_intent_id
+ * (unique) so duplicate webhooks don't double-write.
+ */
+export const payments = pgTable(
+  'payments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    retreatId: uuid('retreat_id')
+      .notNull()
+      .references(() => retreats.id, { onDelete: 'cascade' }),
+    kind: paymentKind('kind').notNull(),
+    stripePaymentIntentId: text('stripe_payment_intent_id'),
+    stripeChargeId: text('stripe_charge_id'),
+    amountCents: integer('amount_cents').notNull(),
+    status: paymentStatus('status').notNull().default('pending'),
+    failureCode: text('failure_code'),
+    failureMessage: text('failure_message'),
+    attemptCount: integer('attempt_count').notNull().default(0),
+    lastAttemptedAt: timestamp('last_attempted_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    paymentIntentIdx: uniqueIndex('payments_stripe_payment_intent_idx').on(
+      t.stripePaymentIntentId,
+    ),
+  }),
+);
+
 export type Therapist = typeof therapists.$inferSelect;
 export type Location = typeof locations.$inferSelect;
 export type PricingConfig = typeof pricingConfig.$inferSelect;
@@ -355,3 +420,5 @@ export type ConsentSignature = typeof consentSignatures.$inferSelect;
 export type AuditEvent = typeof auditEvents.$inferSelect;
 export type EmailLog = typeof emailLog.$inferSelect;
 export type NotificationRecipient = typeof notificationRecipients.$inferSelect;
+export type StripeCustomer = typeof stripeCustomers.$inferSelect;
+export type Payment = typeof payments.$inferSelect;
