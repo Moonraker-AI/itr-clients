@@ -87,13 +87,18 @@ steps:
       - --concurrency=80
       - --timeout=60s
       - --set-env-vars=NODE_ENV=production,CLOUD_SQL_INSTANCE=$_CLOUD_SQL_INSTANCE
-      - --set-secrets=DB_URL=db-url:latest
+      # _GMAIL_SECRETS_PART is "" in dev (no gmail bind → gmail.ts auto-dry-runs)
+      # and ",GMAIL_SERVICE_ACCOUNT_KEY=gmail-service-account:latest" in prod.
+      - --set-secrets=DB_URL=db-url:latest$_GMAIL_SECRETS_PART
       # Direct VPC egress so the Cloud SQL Node.js Connector can reach the
       # instance's private IP. private-ranges-only keeps public traffic on
       # Cloud Run's default egress (no NAT cost).
       - --network=default
       - --subnet=default
       - --vpc-egress=private-ranges-only
+
+substitutions:
+  _GMAIL_SECRETS_PART: ''
 
 options:
   logging: CLOUD_LOGGING_ONLY
