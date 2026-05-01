@@ -59,5 +59,5 @@ jobs:
             --region=${{ vars.GCP_REGION }} \
             --service-account=projects/${{ steps.env.outputs.project }}/serviceAccounts/${{ steps.env.outputs.deployer_sa }} \
             --config=infra/cloudbuild.yaml \
-            --substitutions=^|^COMMIT_SHA=${{ github.sha }}|_PROJECT=${{ steps.env.outputs.project }}|_REGION=${{ vars.GCP_REGION }}|_SERVICE=itr-client-hq|_RUNTIME_SA=${{ steps.env.outputs.runtime_sa }}|_CLOUD_SQL_INSTANCE=${{ steps.env.outputs.cloud_sql_instance }}|_GMAIL_SECRETS_PART=${{ steps.env.outputs.gmail_secrets_part }} \
+            '--substitutions=^|^COMMIT_SHA=${{ github.sha }}|_PROJECT=${{ steps.env.outputs.project }}|_REGION=${{ vars.GCP_REGION }}|_SERVICE=itr-client-hq|_RUNTIME_SA=${{ steps.env.outputs.runtime_sa }}|_CLOUD_SQL_INSTANCE=${{ steps.env.outputs.cloud_sql_instance }}|_GMAIL_SECRETS_PART=${{ steps.env.outputs.gmail_secrets_part }}' \
             .
