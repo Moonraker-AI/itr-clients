@@ -24,12 +24,21 @@ app.get('/', (c) =>
   c.text(`ITR Client HQ — ${process.env.K_REVISION ?? 'local'}\n`),
 );
 
-app.route('/admin/pricing', adminPricingRoute);
-app.route('/admin/clients/new', adminClientsNewRoute);
-app.route('/admin/clients', adminClientsDetailRoute);
-app.route('/c', publicConsentsRoute);
-app.route('/c', publicCheckoutRoute);
+// WEBHOOK_ONLY=1 deploys this image as the public webhook-only Cloud Run
+// service (`itr-stripe-webhook`). It registers ONLY /health + the Stripe
+// webhook route; every other path 404s. Lets us split the public webhook
+// surface from the IAM-gated main app without running two codebases.
+const webhookOnly = process.env.WEBHOOK_ONLY === '1';
+
 app.route('/api/webhooks/stripe', stripeWebhookRoute);
+
+if (!webhookOnly) {
+  app.route('/admin/pricing', adminPricingRoute);
+  app.route('/admin/clients/new', adminClientsNewRoute);
+  app.route('/admin/clients', adminClientsDetailRoute);
+  app.route('/c', publicConsentsRoute);
+  app.route('/c', publicCheckoutRoute);
+}
 
 app.notFound((c) => c.json({ error: 'not_found' }, 404));
 
@@ -51,6 +60,7 @@ const server = serve({ fetch: app.fetch, port }, (info) => {
   log.info('server_listening', {
     port: info.port,
     revision: process.env.K_REVISION ?? 'local',
+    webhookOnly,
   });
 });
 

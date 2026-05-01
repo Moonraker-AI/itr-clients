@@ -99,6 +99,35 @@ steps:
       - --subnet=default
       - --vpc-egress=private-ranges-only
 
+  # Public webhook-only sibling service. Same image, WEBHOOK_ONLY=1
+  # toggles server.ts to register only /health + /api/webhooks/stripe.
+  # `--allow-unauthenticated` lets Stripe deliver events; everything else
+  # 404s, and the Stripe signature is the actual auth.
+  - id: webhook-deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - itr-stripe-webhook
+      - --image=$_REGION-docker.pkg.dev/$_PROJECT/itr/itr-client-hq:$COMMIT_SHA
+      - --project=$_PROJECT
+      - --region=$_REGION
+      - --service-account=$_RUNTIME_SA
+      - --allow-unauthenticated
+      - --ingress=all
+      - --min-instances=0
+      - --max-instances=3
+      - --cpu=1
+      - --memory=512Mi
+      - --concurrency=80
+      - --timeout=30s
+      - --set-env-vars=NODE_ENV=production,CLOUD_SQL_INSTANCE=$_CLOUD_SQL_INSTANCE,WEBHOOK_ONLY=1
+      - --set-secrets=DB_URL=db-url:latest,STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest$_GMAIL_SECRETS_PART
+      - --network=default
+      - --subnet=default
+      - --vpc-egress=private-ranges-only
+
 substitutions:
   _GMAIL_SECRETS_PART: ''
 
