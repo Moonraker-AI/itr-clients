@@ -1,17 +1,24 @@
 /**
- * Idempotent seed: locations, therapists, pricing_config singleton.
+ * Idempotent seed: locations, therapists, pricing_config singleton,
+ * notification_recipients defaults.
  *
  * Source of truth for therapist roster + rates: DESIGN.md §4.
+ * Source of truth for notification recipients: DESIGN.md §8.
  *
  * Run locally against dev (with cloud-sql-proxy + LOCAL_DB_URL):
  *   npm run db:seed
  *
- * Safe to re-run — every upsert keys on a stable slug/id.
+ * Safe to re-run — every upsert keys on a stable slug/id/(event,email).
  */
 
 import { sql } from 'drizzle-orm';
 import { getDb } from './client.js';
-import { locations, pricingConfig, therapists } from './schema.js';
+import {
+  locations,
+  notificationRecipients,
+  pricingConfig,
+  therapists,
+} from './schema.js';
 
 const LOCATIONS = [
   {
@@ -147,11 +154,51 @@ async function main() {
       .values({ id: 'singleton' })
       .onConflictDoNothing({ target: pricingConfig.id });
 
+    // Notification recipients (DESIGN §8). team@ gets every event;
+    // each therapist gets only the two action-required events.
+    const TEAM = 'team@intensivetherapyretreat.com';
+    const ALL_EVENTS = [
+      'consent_package_sent',
+      'consents_signed',
+      'deposit_paid',
+      'dates_confirmed',
+      'in_progress',
+      'completion_submitted',
+      'final_charged',
+      'final_charge_failed',
+      'cancelled',
+    ] as const;
+    const ACTION_REQUIRED_EVENTS = [
+      'deposit_paid',
+      'final_charge_failed',
+    ] as const;
+
+    const notifyRows: { eventType: string; email: string }[] = [];
+    for (const ev of ALL_EVENTS) notifyRows.push({ eventType: ev, email: TEAM });
+    for (const t of THERAPISTS) {
+      for (const ev of ACTION_REQUIRED_EVENTS) {
+        notifyRows.push({ eventType: ev, email: t.email });
+      }
+    }
+    for (const r of notifyRows) {
+      await db
+        .insert(notificationRecipients)
+        .values(r)
+        .onConflictDoUpdate({
+          target: [
+            notificationRecipients.eventType,
+            notificationRecipients.email,
+          ],
+          set: { active: true },
+        });
+    }
+
     const counts = await db.execute(sql`
       select
         (select count(*) from locations) as locations,
         (select count(*) from therapists) as therapists,
-        (select count(*) from pricing_config) as pricing_config
+        (select count(*) from pricing_config) as pricing_config,
+        (select count(*) from notification_recipients) as notification_recipients
     `);
     console.log('seed complete:', counts.rows[0]);
   } finally {

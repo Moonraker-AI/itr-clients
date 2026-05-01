@@ -19,12 +19,19 @@ export interface PriceInput {
   plannedFullDays: number;
   plannedHalfDays: number;
   achDiscountPct: number; // e.g. 0.030 for 3.0%
+  affirmUpliftPct?: number; // e.g. 0.10 for 10%; optional
   paymentMethod: PaymentMethod;
 }
 
 export interface PriceBreakdown {
   achTotalCents: number;
   ccTotalCents: number;
+  /**
+   * Affirm-route total. ACH total uplifted by `affirmUpliftPct`. Only set
+   * when affirmUpliftPct is provided.
+   */
+  affirmTotalCents: number | null;
+  /** Total for the chosen `paymentMethod`. */
   totalCents: number;
 }
 
@@ -38,6 +45,12 @@ export function computePrice(input: PriceInput): PriceBreakdown {
   if (input.achDiscountPct < 0 || input.achDiscountPct >= 1) {
     throw new RangeError('ach_discount_pct out of range');
   }
+  if (
+    input.affirmUpliftPct !== undefined &&
+    (input.affirmUpliftPct < 0 || input.affirmUpliftPct >= 1)
+  ) {
+    throw new RangeError('affirm_uplift_pct out of range');
+  }
 
   const halfDayCents = input.halfDayRateCents ?? 0;
   const achTotalCents =
@@ -46,11 +59,35 @@ export function computePrice(input: PriceInput): PriceBreakdown {
 
   const ccTotalCents = Math.round(achTotalCents / (1 - input.achDiscountPct));
 
+  const affirmTotalCents =
+    input.affirmUpliftPct === undefined
+      ? null
+      : Math.round(achTotalCents * (1 + input.affirmUpliftPct));
+
   return {
     achTotalCents,
     ccTotalCents,
+    affirmTotalCents,
     totalCents: input.paymentMethod === 'ach' ? achTotalCents : ccTotalCents,
   };
+}
+
+/**
+ * Cancellation refund. Per DESIGN §6: cancellations >3 weeks before
+ * scheduled_start_date refund the deposit minus a flat admin fee. Inside the
+ * 3-week window the deposit is forfeit (return value 0).
+ *
+ * `weeksUntilStart` is the caller's responsibility — same source-of-truth as
+ * the cancellation form. We don't accept Date here because we don't want
+ * timezone bugs to determine refund eligibility.
+ */
+export function cancellationRefundCents(args: {
+  depositCents: number;
+  cancellationAdminFeeCents: number;
+  weeksUntilStart: number;
+}): number {
+  if (args.weeksUntilStart < 3) return 0;
+  return Math.max(0, args.depositCents - args.cancellationAdminFeeCents);
 }
 
 export function formatCents(cents: number): string {
