@@ -1,6 +1,7 @@
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 
+import { adminClientsDetailRoute } from './routes/admin/clients-detail.js';
 import { adminClientsNewRoute } from './routes/admin/clients-new.js';
 import { adminPricingRoute } from './routes/admin/pricing.js';
 import { publicConsentsRoute } from './routes/public/consents.js';
@@ -23,6 +24,7 @@ app.get('/', (c) =>
 
 app.route('/admin/pricing', adminPricingRoute);
 app.route('/admin/clients/new', adminClientsNewRoute);
+app.route('/admin/clients', adminClientsDetailRoute);
 app.route('/c', publicConsentsRoute);
 
 app.notFound((c) => c.json({ error: 'not_found' }, 404));
