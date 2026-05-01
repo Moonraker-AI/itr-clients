@@ -51,10 +51,7 @@ async function buildPool(): Promise<pg.Pool> {
   }
 
   const instance = requireEnv('CLOUD_SQL_INSTANCE');
-  const dbUrl = new URL(requireEnv('DB_URL'));
-  const user = decodeURIComponent(dbUrl.username);
-  const password = decodeURIComponent(dbUrl.password);
-  const database = dbUrl.pathname.replace(/^\//, '') || 'itr_app';
+  const { user, password, database } = parseDbUrl(requireEnv('DB_URL'));
 
   // Migration path: Cloud Run Job mounts /cloudsql/<INSTANCE> as a unix
   // socket via --add-cloudsql-instances. No VPC config required.
@@ -90,4 +87,32 @@ function requireEnv(name: string): string {
   const v = process.env[name];
   if (!v) throw new Error(`${name} env var is required`);
   return v;
+}
+
+/**
+ * Parse a Postgres DSN without ever surfacing the secret on failure.
+ *
+ * `new URL(dsn)` is convenient but its TypeError attaches `input` to the
+ * thrown object, which means any unhandled parse failure prints the full
+ * connection string — including the password — to stderr. This wrapper
+ * catches that and rethrows a generic error. Passwords with reserved URL
+ * chars (`/`, `@`, `:`, `?`, `#`, `&`) MUST be percent-encoded in the
+ * stored secret.
+ */
+function parseDbUrl(dsn: string): {
+  user: string;
+  password: string;
+  database: string;
+} {
+  let url: URL;
+  try {
+    url = new URL(dsn);
+  } catch {
+    throw new Error('DB_URL parse failed (check that password is URL-encoded)');
+  }
+  return {
+    user: decodeURIComponent(url.username),
+    password: decodeURIComponent(url.password),
+    database: url.pathname.replace(/^\//, '') || 'itr_app',
+  };
 }
