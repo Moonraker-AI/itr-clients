@@ -170,6 +170,7 @@ async function main() {
       'completion_submitted',
       'final_charged',
       'final_charge_failed',
+      'final_charge_retry_exhausted',
       'cancelled',
     ] as const;
 

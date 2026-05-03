@@ -460,6 +460,37 @@ export function verifyWebhookSignature(args: {
 }
 
 /**
+ * Create a Stripe Customer Portal session so the client can update their
+ * saved payment method (DESIGN §6 failure recovery, M6). Returned URL is
+ * a one-shot Stripe-hosted page; we redirect the client to it.
+ */
+export interface CreatePortalSessionArgs {
+  stripeCustomerId: string;
+  /** Where Stripe redirects the client after they finish in the portal. */
+  returnUrl: string;
+}
+
+export interface CreatePortalSessionResult {
+  url: string;
+  dryRun: boolean;
+}
+
+export async function createPortalSession(
+  args: CreatePortalSessionArgs,
+): Promise<CreatePortalSessionResult> {
+  if (dryRun()) {
+    log.info('stripe_dry_run_portal_session', { stripeCustomerId: args.stripeCustomerId });
+    return { url: args.returnUrl, dryRun: true };
+  }
+  const client = getClient()!;
+  const session = await client.billingPortal.sessions.create({
+    customer: args.stripeCustomerId,
+    return_url: args.returnUrl,
+  });
+  return { url: session.url, dryRun: false };
+}
+
+/**
  * Retrieve a PaymentIntent. Used by the deposit webhook to surface the
  * saved payment_method id (so M5's off-session charge has something to
  * reference) and the latest_charge id.

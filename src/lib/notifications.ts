@@ -33,6 +33,7 @@ import { log } from './phi-redactor.js';
 const ACTION_REQUIRED_EVENTS: ReadonlySet<NotifyEvent> = new Set([
   'deposit_paid',
   'final_charge_failed',
+  'final_charge_retry_exhausted',
 ]);
 
 export type NotifyEvent =
@@ -44,6 +45,7 @@ export type NotifyEvent =
   | 'completion_submitted'
   | 'final_charged'
   | 'final_charge_failed'
+  | 'final_charge_retry_exhausted'
   | 'cancelled';
 
 interface BaseNotifyArgs {
@@ -152,6 +154,13 @@ function compose(args: NotifyArgs): Composed {
         textBody: `Final charge failed for a retreat. Action needed: ${link}\n`,
         htmlBody: `<p>Final charge failed for a retreat. Action needed.</p><p><a href="${esc(link)}">${esc(link)}</a></p>`,
         templateName: 'final_charge_failed',
+      };
+    case 'final_charge_retry_exhausted':
+      return {
+        subject: 'Action needed: final charge retry attempts exhausted',
+        textBody: `All retry attempts for the final charge have failed (3/3). Manual recovery required: ${link}\n`,
+        htmlBody: `<p>All retry attempts for the final charge have failed (3/3). Manual recovery required.</p><p><a href="${esc(link)}">${esc(link)}</a></p>`,
+        templateName: 'final_charge_retry_exhausted',
       };
     case 'cancelled':
       return {
