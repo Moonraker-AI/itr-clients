@@ -12,7 +12,9 @@
  *
  * Behaviour:
  *   - Selects retreats with `state='scheduled'` AND
- *     `scheduled_start_date <= today (UTC)`.
+ *     `scheduled_start_date <= today (America/New_York)`.
+ *     ET (not UTC) so the calendar day matches the schedule's
+ *     America/New_York anchor and what clients reason about.
  *   - For each, calls `transitions.markInProgress` which is idempotent.
  *   - Returns a JSON summary `{ checked, transitioned, errors }`.
  *
@@ -39,7 +41,15 @@ cronStateTransitionsRoute.post('/state-transitions', async (c) => {
     }
   }
 
-  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD UTC
+  // YYYY-MM-DD in America/New_York. The schedule fires at 06:05 ET so
+  // matching the same TZ avoids a 4–5h same-day-start lag relative to
+  // UTC. en-CA gives ISO-style YYYY-MM-DD output.
+  const today = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
   const { db } = await getDb();
 
   const due = await db
