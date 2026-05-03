@@ -266,6 +266,172 @@ export async function createDepositCheckoutSession(
 }
 
 /**
+ * Charge the final balance off-session against a previously saved
+ * payment method (DESIGN §6 final balance flow, M5).
+ *
+ * Behaviour:
+ *   - Synchronous attempt with `confirm: true` — the result of the call
+ *     is authoritative; webhooks are a redundant ack.
+ *   - Idempotent on `idempotencyKey` (callers pass `final:<retreatId>:<attempt>`).
+ *   - Maps Stripe outcomes to a small enum so the state machine doesn't
+ *     have to know about Stripe error shapes.
+ */
+export type FinalChargeStatus =
+  | 'succeeded'
+  | 'requires_action' // 3DS / authentication_required
+  | 'failed';
+
+export interface ChargeFinalBalanceArgs {
+  retreatId: string;
+  clientId: string;
+  stripeCustomerId: string;
+  /** Saved PM id — usually `stripe_customers.default_payment_method_id`. */
+  paymentMethodId: string;
+  amountCents: number;
+  /** Idempotency key for the PaymentIntent create. */
+  idempotencyKey: string;
+}
+
+export interface ChargeFinalBalanceResult {
+  status: FinalChargeStatus;
+  paymentIntentId: string;
+  chargeId: string | null;
+  /** Populated for `failed` (and sometimes `requires_action`). */
+  failureCode: string | null;
+  failureMessage: string | null;
+  /** Populated for `requires_action` so the recovery email can hand off
+   *  to the hosted-confirmation flow (M6). */
+  clientSecret: string | null;
+  dryRun: boolean;
+}
+
+export async function chargeFinalBalance(
+  args: ChargeFinalBalanceArgs,
+): Promise<ChargeFinalBalanceResult> {
+  const description = 'Retreat balance';
+  assertDescription(description);
+  const metadata = {
+    client_id: args.clientId,
+    retreat_id: args.retreatId,
+    payment_kind: 'final',
+  };
+  assertMetadata(metadata);
+
+  if (args.amountCents <= 0) {
+    throw new Error(`chargeFinalBalance: amountCents must be > 0`);
+  }
+
+  if (dryRun()) {
+    const paymentIntentId = `pi_dryrun_final_${args.retreatId.slice(0, 8)}`;
+    log.info('stripe_dry_run_charge_final', {
+      retreatId: args.retreatId,
+      paymentIntentId,
+      amount: args.amountCents,
+    });
+    return {
+      status: 'succeeded',
+      paymentIntentId,
+      chargeId: `ch_dryrun_${args.retreatId.slice(0, 8)}`,
+      failureCode: null,
+      failureMessage: null,
+      clientSecret: null,
+      dryRun: true,
+    };
+  }
+
+  const client = getClient()!;
+  try {
+    const pi = await client.paymentIntents.create(
+      {
+        amount: args.amountCents,
+        currency: 'usd',
+        customer: args.stripeCustomerId,
+        payment_method: args.paymentMethodId,
+        off_session: true,
+        confirm: true,
+        description,
+        metadata,
+        statement_descriptor_suffix: STATEMENT_DESCRIPTOR.slice(0, 22),
+      },
+      { idempotencyKey: args.idempotencyKey },
+    );
+    return mapPaymentIntent(pi);
+  } catch (err) {
+    // `off_session: true` failures throw with `err.payment_intent` populated
+    // when Stripe has a PI to attach to (e.g. authentication_required).
+    const e = err as {
+      code?: string;
+      message: string;
+      payment_intent?: Stripe.PaymentIntent;
+    };
+    if (e.payment_intent) {
+      const mapped = mapPaymentIntent(e.payment_intent);
+      log.warn('stripe_final_charge_error_with_pi', {
+        retreatId: args.retreatId,
+        status: mapped.status,
+        code: e.code,
+      });
+      return {
+        ...mapped,
+        failureCode: mapped.failureCode ?? e.code ?? null,
+        failureMessage: mapped.failureMessage ?? e.message,
+      };
+    }
+    log.error('stripe_final_charge_error_no_pi', {
+      retreatId: args.retreatId,
+      code: e.code,
+      message: e.message,
+    });
+    return {
+      status: 'failed',
+      paymentIntentId: '',
+      chargeId: null,
+      failureCode: e.code ?? 'unknown',
+      failureMessage: e.message,
+      clientSecret: null,
+      dryRun: false,
+    };
+  }
+}
+
+function mapPaymentIntent(pi: Stripe.PaymentIntent): ChargeFinalBalanceResult {
+  let chargeId: string | null = null;
+  if (typeof pi.latest_charge === 'string') chargeId = pi.latest_charge;
+  else if (pi.latest_charge) chargeId = pi.latest_charge.id;
+  if (pi.status === 'succeeded') {
+    return {
+      status: 'succeeded',
+      paymentIntentId: pi.id,
+      chargeId,
+      failureCode: null,
+      failureMessage: null,
+      clientSecret: null,
+      dryRun: false,
+    };
+  }
+  if (pi.status === 'requires_action' || pi.status === 'requires_confirmation') {
+    return {
+      status: 'requires_action',
+      paymentIntentId: pi.id,
+      chargeId: null,
+      failureCode: pi.last_payment_error?.code ?? null,
+      failureMessage: pi.last_payment_error?.message ?? null,
+      clientSecret: pi.client_secret,
+      dryRun: false,
+    };
+  }
+  return {
+    status: 'failed',
+    paymentIntentId: pi.id,
+    chargeId: null,
+    failureCode: pi.last_payment_error?.code ?? pi.status,
+    failureMessage: pi.last_payment_error?.message ?? null,
+    clientSecret: null,
+    dryRun: false,
+  };
+}
+
+/**
  * Webhook signature verification. Returns the parsed Stripe event or null
  * (and logs) on a bad signature — caller should respond 400 in that case.
  */
@@ -291,6 +457,21 @@ export function verifyWebhookSignature(args: {
     });
     return null;
   }
+}
+
+/**
+ * Retrieve a PaymentIntent. Used by the deposit webhook to surface the
+ * saved payment_method id (so M5's off-session charge has something to
+ * reference) and the latest_charge id.
+ */
+export async function retrievePaymentIntent(
+  paymentIntentId: string,
+): Promise<Stripe.PaymentIntent | null> {
+  if (dryRun()) return null;
+  const client = getClient()!;
+  return client.paymentIntents.retrieve(paymentIntentId, {
+    expand: ['payment_method', 'latest_charge'],
+  });
 }
 
 /**
