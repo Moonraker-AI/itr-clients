@@ -15,9 +15,25 @@
 import { and, eq } from 'drizzle-orm';
 
 import { getDb } from '../db/client.js';
-import { emailLog, notificationRecipients } from '../db/schema.js';
+import {
+  emailLog,
+  notificationRecipients,
+  retreats,
+  therapists,
+} from '../db/schema.js';
 import { sendEmail, type MailAttachment } from './gmail.js';
 import { log } from './phi-redactor.js';
+
+/**
+ * Action-required events: in addition to the shared inbox seeded in
+ * `notification_recipients`, the assigned therapist on the retreat is
+ * also notified. Resolved at send time via retreat.therapist_id, so
+ * therapists get notified ONLY for their own retreats.
+ */
+const ACTION_REQUIRED_EVENTS: ReadonlySet<NotifyEvent> = new Set([
+  'deposit_paid',
+  'final_charge_failed',
+]);
 
 export type NotifyEvent =
   | 'consent_package_sent'
@@ -151,8 +167,8 @@ export async function notify(args: NotifyArgs): Promise<void> {
   const composed = compose(args);
   const { db } = await getDb();
 
-  // Resolve internal recipients from the table (team@ + per-therapist
-  // for action-required events).
+  // Resolve internal recipients from the shared notification_recipients
+  // table (currently the support@ inbox plus any future shared addresses).
   const internal = await db
     .select({ email: notificationRecipients.email })
     .from(notificationRecipients)
@@ -164,6 +180,18 @@ export async function notify(args: NotifyArgs): Promise<void> {
     );
 
   const recipients = new Set<string>(internal.map((r) => r.email));
+
+  if (ACTION_REQUIRED_EVENTS.has(args.event)) {
+    // Loop in only the retreat's assigned therapist — not every active
+    // therapist. Resolved per-retreat via retreat.therapist_id.
+    const [t] = await db
+      .select({ email: therapists.email })
+      .from(retreats)
+      .innerJoin(therapists, eq(retreats.therapistId, therapists.id))
+      .where(eq(retreats.id, args.retreatId));
+    if (t?.email) recipients.add(t.email);
+  }
+
   if (args.event === 'consent_package_sent') {
     // Client gets the same email separately; their address is PHI but the
     // body is generic + token-only.

@@ -31,6 +31,11 @@ const PHONE_RE = /(?:\+?\d[\d\s().-]{8,}\d)/g;
 const SSN_RE = /\b\d{3}-\d{2}-\d{4}\b/g;
 const DOB_RE = /\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4})\b/g;
 const ISO_DATETIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+// Bare YYYY-MM-DD is allowed when it is the *entire* string. This is the
+// shape we use for operational date metadata (scheduled_start_date,
+// `today` in cron logs). DOBs that show up *embedded* in larger strings
+// still hit DOB_RE inside scrubString.
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const URL_RE = /^https?:\/\//;
 const STACK_RE = /\n\s+at\s/;
 const UUID_RE =
@@ -43,6 +48,7 @@ function scrubString(s: string): string {
   if (s.length === 0) return s;
   if (URL_RE.test(s) || STACK_RE.test(s) || UUID_RE.test(s)) return s;
   if (ISO_DATETIME_RE.test(s)) return s;
+  if (ISO_DATE_RE.test(s)) return s;
 
   let out = s
     .replace(EMAIL_RE, REDACTED)
