@@ -155,8 +155,11 @@ async function main() {
       .onConflictDoNothing({ target: pricingConfig.id });
 
     // Notification recipients (DESIGN §8). The shared inbox gets every
-    // event; each therapist gets only the two action-required events.
-    // (Was team@ in M2 seed; switched to support@ in 0003 migration.)
+    // event. Per-therapist notifications are NOT seeded here — they are
+    // resolved at send time in `notify()` via retreat.therapist_id, so
+    // each therapist only sees their own retreats' events. (M2 originally
+    // seeded a row per therapist per action-required event; that caused
+    // notification fan-out to all therapists. Removed in 0003 migration.)
     const TEAM = 'support@intensivetherapyretreat.com';
     const ALL_EVENTS = [
       'consent_package_sent',
@@ -169,18 +172,9 @@ async function main() {
       'final_charge_failed',
       'cancelled',
     ] as const;
-    const ACTION_REQUIRED_EVENTS = [
-      'deposit_paid',
-      'final_charge_failed',
-    ] as const;
 
     const notifyRows: { eventType: string; email: string }[] = [];
     for (const ev of ALL_EVENTS) notifyRows.push({ eventType: ev, email: TEAM });
-    for (const t of THERAPISTS) {
-      for (const ev of ACTION_REQUIRED_EVENTS) {
-        notifyRows.push({ eventType: ev, email: t.email });
-      }
-    }
     for (const r of notifyRows) {
       await db
         .insert(notificationRecipients)
