@@ -158,6 +158,18 @@ adminClientsDetailRoute.get('/:id', async (c) => {
     return '';
   })();
 
+  const completeBlock = (() => {
+    if (row.state === 'in_progress') {
+      return `<h2>Next step</h2>
+  <p><a class="cta" href="/admin/clients/${escAttr(row.retreatId)}/complete">Complete retreat + charge balance</a></p>`;
+    }
+    if (row.state === 'final_charge_failed') {
+      return `<h2 style="color:#a00">Final charge failed</h2>
+  <p>Recovery flow lands in M6. For now, see the <code>final_charge_failed</code> audit row for the failure code.</p>`;
+    }
+    return '';
+  })();
+
   const auditList = audits
     .map(
       (a) =>
@@ -217,6 +229,7 @@ adminClientsDetailRoute.get('/:id', async (c) => {
   </div>
 
   ${scheduleBlock}
+  ${completeBlock}
 
   <h2>Required consents</h2>
   <ul>${consentsList}</ul>

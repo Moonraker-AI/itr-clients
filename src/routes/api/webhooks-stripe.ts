@@ -25,7 +25,7 @@ import { Hono } from 'hono';
 import type Stripe from 'stripe';
 
 import { log } from '../../lib/phi-redactor.js';
-import { verifyWebhookSignature } from '../../lib/stripe.js';
+import { retrievePaymentIntent, verifyWebhookSignature } from '../../lib/stripe.js';
 import { transitions } from '../../lib/state-machine.js';
 
 export const stripeWebhookRoute = new Hono();
@@ -100,21 +100,88 @@ async function dispatch(event: Stripe.Event): Promise<void> {
         log.warn('stripe_webhook_session_no_payment_intent', { retreatId });
         return;
       }
+      // Stripe webhook events deliver `payment_intent` as just an id; fetch
+      // the full PI to surface payment_method + latest_charge for M5's
+      // off-session charge path.
+      const pi = await retrievePaymentIntent(piId);
+      let stripeChargeId: string | undefined;
+      if (pi) {
+        if (typeof pi.latest_charge === 'string') stripeChargeId = pi.latest_charge;
+        else if (pi.latest_charge) stripeChargeId = pi.latest_charge.id;
+      }
+      let paymentMethodId: string | undefined;
+      let paymentMethodType: string | undefined;
+      if (pi) {
+        if (typeof pi.payment_method === 'string') {
+          paymentMethodId = pi.payment_method;
+        } else if (pi.payment_method) {
+          paymentMethodId = pi.payment_method.id;
+          paymentMethodType = pi.payment_method.type;
+        }
+      }
       await transitions.markDepositPaid({
         retreatId,
         actor: { kind: 'stripe', eventId: event.id },
         stripePaymentIntentId: piId,
+        ...(stripeChargeId ? { stripeChargeId } : {}),
         amountCents: session.amount_total ?? 0,
+        ...(paymentMethodId ? { stripePaymentMethodId: paymentMethodId } : {}),
+        ...(paymentMethodType ? { paymentMethodType } : {}),
       });
       return;
     }
-    case 'payment_intent.succeeded':
-    case 'payment_intent.payment_failed':
-      // Final-charge handling lands in M5 (off-session charge) + M6
-      // (recovery). For deposit paths the checkout.session.completed
-      // event above is authoritative.
-      log.info('stripe_webhook_event_acked_no_op_yet', { type: event.type });
+    case 'payment_intent.succeeded': {
+      const pi = event.data.object as Stripe.PaymentIntent;
+      const meta = pi.metadata ?? {};
+      const retreatId = meta['retreat_id'];
+      const paymentKind = meta['payment_kind'];
+      if (paymentKind !== 'final') {
+        // Deposit successes are handled via checkout.session.completed.
+        log.info('stripe_webhook_pi_succeeded_skipped', { type: event.type, paymentKind });
+        return;
+      }
+      if (!retreatId) {
+        log.warn('stripe_webhook_missing_retreat_id', { type: event.type });
+        return;
+      }
+      const chargeId =
+        typeof pi.latest_charge === 'string'
+          ? pi.latest_charge
+          : pi.latest_charge?.id;
+      // Idempotent: handler-side success path may have already flipped
+      // state to `completed`; markCompleted is a no-op in that case.
+      await transitions.markCompleted({
+        retreatId,
+        actor: { kind: 'stripe', eventId: event.id },
+        stripePaymentIntentId: pi.id,
+        ...(chargeId ? { stripeChargeId: chargeId } : {}),
+        amountCents: pi.amount_received ?? pi.amount,
+      });
       return;
+    }
+    case 'payment_intent.payment_failed': {
+      const pi = event.data.object as Stripe.PaymentIntent;
+      const meta = pi.metadata ?? {};
+      const retreatId = meta['retreat_id'];
+      const paymentKind = meta['payment_kind'];
+      if (paymentKind !== 'final') {
+        log.info('stripe_webhook_pi_failed_skipped', { type: event.type, paymentKind });
+        return;
+      }
+      if (!retreatId) {
+        log.warn('stripe_webhook_missing_retreat_id', { type: event.type });
+        return;
+      }
+      await transitions.markFinalChargeFailed({
+        retreatId,
+        actor: { kind: 'stripe', eventId: event.id },
+        failureCode: pi.last_payment_error?.code ?? 'unknown',
+        failureMessage: pi.last_payment_error?.message ?? '',
+        stripePaymentIntentId: pi.id,
+        amountCents: pi.amount,
+      });
+      return;
+    }
     default:
       log.info('stripe_webhook_event_ignored', { type: event.type });
       return;

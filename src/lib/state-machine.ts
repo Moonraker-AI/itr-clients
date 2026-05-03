@@ -30,6 +30,7 @@ import {
   payments,
   retreatRequiredConsents,
   retreats,
+  stripeCustomers,
 } from '../db/schema.js';
 import { buildIcs } from './ics.js';
 import { notify } from './notifications.js';
@@ -341,6 +342,11 @@ export const transitions = {
     stripePaymentIntentId: string;
     stripeChargeId?: string;
     amountCents: number;
+    /** Saved PM id for the off-session final charge (M5).
+     *  If omitted (legacy callers), the customer's default_payment_method_id
+     *  is left untouched. */
+    stripePaymentMethodId?: string;
+    paymentMethodType?: string;
   }): Promise<void> {
     const { db } = await getDb();
 
@@ -387,6 +393,21 @@ export const transitions = {
             amount_cents: args.amountCents,
           },
         });
+      }
+
+      // Persist the saved payment method on stripe_customers so M5's
+      // off-session charge has a PM id to reference. Idempotent (overwrites
+      // with the latest value — Stripe attaches the PM at deposit time, and
+      // any subsequent client card update flows through the same column).
+      if (args.stripePaymentMethodId) {
+        await tx
+          .update(stripeCustomers)
+          .set({
+            defaultPaymentMethodId: args.stripePaymentMethodId,
+            paymentMethodType: args.paymentMethodType ?? null,
+            updatedAt: new Date(),
+          })
+          .where(eq(stripeCustomers.clientId, r.clientId));
       }
       return { isNew };
     });
@@ -588,28 +609,297 @@ export const transitions = {
       to: 'in_progress',
     });
   },
-  submitCompletion(_args: {
+  /**
+   * in_progress → awaiting_final_charge.
+   *
+   * Therapist submits actual day counts at retreat completion. Recomputes
+   * `total_actual_cents` from the snapshotted rates on the retreat row.
+   * Idempotent: re-POST while already `awaiting_final_charge` with matching
+   * day counts is a no-op.
+   */
+  async submitCompletion(args: {
     retreatId: RetreatId;
     actor: Actor;
     actualFullDays: number;
     actualHalfDays: number;
-  }) {
-    NOT_IMPLEMENTED('submitCompletion');
+  }): Promise<void> {
+    if (
+      !Number.isInteger(args.actualFullDays) ||
+      !Number.isInteger(args.actualHalfDays) ||
+      args.actualFullDays < 0 ||
+      args.actualHalfDays < 0 ||
+      args.actualFullDays + args.actualHalfDays === 0
+    ) {
+      throw new Error('submitCompletion: invalid day counts');
+    }
+
+    const { db } = await getDb();
+
+    const out = await db.transaction(async (tx) => {
+      const [r] = await tx.select().from(retreats).where(eq(retreats.id, args.retreatId));
+      if (!r) throw new Error(`retreat not found: ${args.retreatId}`);
+
+      // Idempotency: already submitted with same counts → no-op.
+      if (r.state === 'awaiting_final_charge') {
+        if (
+          r.actualFullDays === args.actualFullDays &&
+          r.actualHalfDays === args.actualHalfDays
+        ) {
+          return { changed: false, totalActualCents: r.totalActualCents ?? 0 };
+        }
+        throw new Error(
+          'submitCompletion: completion already submitted with different day counts',
+        );
+      }
+      assertTransition(r.state, 'awaiting_final_charge');
+
+      if (args.actualHalfDays > 0 && r.halfDayRateCents == null) {
+        throw new Error(
+          'submitCompletion: half-days submitted but retreat has no half-day rate',
+        );
+      }
+
+      const totalActualCents =
+        r.fullDayRateCents * args.actualFullDays +
+        (r.halfDayRateCents ?? 0) * args.actualHalfDays;
+
+      await tx
+        .update(retreats)
+        .set({
+          state: 'awaiting_final_charge',
+          actualFullDays: args.actualFullDays,
+          actualHalfDays: args.actualHalfDays,
+          totalActualCents,
+          updatedAt: new Date(),
+        })
+        .where(eq(retreats.id, args.retreatId));
+
+      const { actorType, actorId } = actorToColumns(args.actor);
+      await tx.insert(auditEvents).values({
+        retreatId: args.retreatId,
+        actorType,
+        actorId,
+        eventType: 'completion_submitted',
+        payload: {
+          actual_full_days: args.actualFullDays,
+          actual_half_days: args.actualHalfDays,
+          total_actual_cents: totalActualCents,
+        },
+      });
+      return { changed: true, totalActualCents };
+    });
+
+    if (!out.changed) {
+      log.info('state_transition_noop', {
+        retreatId: args.retreatId,
+        transition: 'submitCompletion',
+      });
+      return;
+    }
+
+    await notify({
+      event: 'completion_submitted',
+      retreatId: args.retreatId,
+      adminUrl: `${adminBaseUrl()}/admin/clients/${args.retreatId}`,
+    });
+
+    log.info('state_transition', {
+      retreatId: args.retreatId,
+      to: 'awaiting_final_charge',
+      totalActualCents: out.totalActualCents,
+    });
   },
-  markCompleted(_args: {
+
+  /**
+   * awaiting_final_charge → completed.
+   *
+   * Idempotent on `stripePaymentIntentId` (payments-row uniqueness). If the
+   * retreat is already `completed`, only the payments row is updated and
+   * we no-op on state + audit + notify. If we're recovering a previously
+   * `final_charge_failed` retreat, the same path is taken and the `failed`
+   * payments row gets flipped to `succeeded`.
+   */
+  async markCompleted(args: {
     retreatId: RetreatId;
     actor: Actor;
-    paymentIntentId: string;
-  }) {
-    NOT_IMPLEMENTED('markCompleted');
+    stripePaymentIntentId: string;
+    stripeChargeId?: string;
+    amountCents: number;
+  }): Promise<void> {
+    const { db } = await getDb();
+
+    const out = await db.transaction(async (tx) => {
+      const [r] = await tx.select().from(retreats).where(eq(retreats.id, args.retreatId));
+      if (!r) throw new Error(`retreat not found: ${args.retreatId}`);
+
+      const inserted = await tx
+        .insert(payments)
+        .values({
+          retreatId: args.retreatId,
+          kind: 'final',
+          stripePaymentIntentId: args.stripePaymentIntentId,
+          stripeChargeId: args.stripeChargeId ?? null,
+          amountCents: args.amountCents,
+          status: 'succeeded',
+          attemptCount: 1,
+          lastAttemptedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: payments.stripePaymentIntentId,
+          set: {
+            status: 'succeeded',
+            stripeChargeId: args.stripeChargeId ?? null,
+            failureCode: null,
+            failureMessage: null,
+            updatedAt: new Date(),
+            attemptCount: sql`${payments.attemptCount} + 1`,
+            lastAttemptedAt: new Date(),
+          },
+        })
+        .returning({ id: payments.id });
+      const paymentRowIsNew = inserted.length > 0;
+
+      if (r.state === 'completed') {
+        return { changed: false, paymentRowIsNew };
+      }
+      assertTransition(r.state, 'completed');
+
+      await tx
+        .update(retreats)
+        .set({ state: 'completed', updatedAt: new Date() })
+        .where(eq(retreats.id, args.retreatId));
+
+      const { actorType, actorId } = actorToColumns(args.actor);
+      await tx.insert(auditEvents).values({
+        retreatId: args.retreatId,
+        actorType,
+        actorId,
+        eventType: 'final_charged',
+        payload: {
+          stripe_payment_intent_id: args.stripePaymentIntentId,
+          amount_cents: args.amountCents,
+        },
+      });
+      return { changed: true, paymentRowIsNew };
+    });
+
+    if (!out.changed) {
+      log.info('state_transition_noop', {
+        retreatId: args.retreatId,
+        transition: 'markCompleted',
+        paymentRowIsNew: out.paymentRowIsNew,
+      });
+      return;
+    }
+
+    await notify({
+      event: 'final_charged',
+      retreatId: args.retreatId,
+      adminUrl: `${adminBaseUrl()}/admin/clients/${args.retreatId}`,
+    });
+
+    log.info('state_transition', {
+      retreatId: args.retreatId,
+      to: 'completed',
+    });
   },
-  markFinalChargeFailed(_args: {
+
+  /**
+   * awaiting_final_charge → final_charge_failed.
+   *
+   * Records a failed final-charge attempt. Idempotent on
+   * `stripePaymentIntentId` if provided; otherwise upserts a placeholder
+   * row keyed on (retreat_id, kind='final') by inserting a fresh row and
+   * relying on the caller (M6 retry) to use a fresh PI per attempt.
+   *
+   * For `requires_action` outcomes we go through this same path and stash
+   * the client_secret in the payload so M6 can hand off the hosted-
+   * confirmation flow.
+   */
+  async markFinalChargeFailed(args: {
     retreatId: RetreatId;
     actor: Actor;
     failureCode: string;
     failureMessage: string;
-  }) {
-    NOT_IMPLEMENTED('markFinalChargeFailed');
+    stripePaymentIntentId?: string;
+    amountCents?: number;
+    /** Stripe PI client_secret — populated for `requires_action` only. */
+    clientSecret?: string;
+  }): Promise<void> {
+    const { db } = await getDb();
+
+    await db.transaction(async (tx) => {
+      const [r] = await tx.select().from(retreats).where(eq(retreats.id, args.retreatId));
+      if (!r) throw new Error(`retreat not found: ${args.retreatId}`);
+
+      // Idempotency: already in failed state — only update the payments row
+      // (so retry attempts get their attempt_count bumped) and skip the
+      // state/audit/notify side-effects.
+      const alreadyFailed = r.state === 'final_charge_failed';
+      if (!alreadyFailed) assertTransition(r.state, 'final_charge_failed');
+
+      if (args.stripePaymentIntentId) {
+        await tx
+          .insert(payments)
+          .values({
+            retreatId: args.retreatId,
+            kind: 'final',
+            stripePaymentIntentId: args.stripePaymentIntentId,
+            amountCents: args.amountCents ?? 0,
+            status: 'failed',
+            failureCode: args.failureCode,
+            failureMessage: args.failureMessage,
+            attemptCount: 1,
+            lastAttemptedAt: new Date(),
+          })
+          .onConflictDoUpdate({
+            target: payments.stripePaymentIntentId,
+            set: {
+              status: 'failed',
+              failureCode: args.failureCode,
+              failureMessage: args.failureMessage,
+              updatedAt: new Date(),
+              attemptCount: sql`${payments.attemptCount} + 1`,
+              lastAttemptedAt: new Date(),
+            },
+          });
+      }
+
+      if (alreadyFailed) return;
+
+      await tx
+        .update(retreats)
+        .set({ state: 'final_charge_failed', updatedAt: new Date() })
+        .where(eq(retreats.id, args.retreatId));
+
+      const { actorType, actorId } = actorToColumns(args.actor);
+      await tx.insert(auditEvents).values({
+        retreatId: args.retreatId,
+        actorType,
+        actorId,
+        eventType: 'final_charge_failed',
+        payload: {
+          failure_code: args.failureCode,
+          failure_message: args.failureMessage,
+          stripe_payment_intent_id: args.stripePaymentIntentId ?? null,
+          // client_secret is intentionally captured so M6 can hand off the
+          // hosted-confirmation flow without round-tripping Stripe again.
+          requires_action_client_secret: args.clientSecret ?? null,
+        },
+      });
+    });
+
+    await notify({
+      event: 'final_charge_failed',
+      retreatId: args.retreatId,
+      adminUrl: `${adminBaseUrl()}/admin/clients/${args.retreatId}`,
+    });
+
+    log.info('state_transition', {
+      retreatId: args.retreatId,
+      to: 'final_charge_failed',
+      failureCode: args.failureCode,
+    });
   },
 } as const;
 
