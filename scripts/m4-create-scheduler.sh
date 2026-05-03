@@ -15,10 +15,12 @@
 #   ITR_DEV_PROJECT_ID    (only needed for `dev`)
 #   ITR_PROD_PROJECT_ID   (only needed for `prod`)
 #
-# The runtime SA `itr-app@$PROJECT.iam.gserviceaccount.com` already has
-# `roles/run.invoker` on the main service via Cloud Build deploy. Scheduler
-# additionally needs `roles/iam.serviceAccountTokenCreator` on itself
-# (granted once below if missing — safe to re-run).
+# Two IAM grants are needed (both idempotent below):
+#   1. Scheduler service agent must mint OIDC tokens for the runtime SA
+#      → `roles/iam.serviceAccountTokenCreator` on the runtime SA.
+#   2. The runtime SA itself must be allowed to invoke the Cloud Run
+#      service it targets → `roles/run.invoker` on `itr-client-hq`.
+#      (Cloud Build deploys do NOT auto-grant invoker to the runtime SA.)
 
 set -euo pipefail
 
@@ -47,12 +49,29 @@ echo "==> project=${PROJECT_ID} region=${REGION}"
 echo "==> target=${TARGET_URL}"
 echo "==> oidc SA=${RUNTIME_SA}"
 
+# Enable required APIs. Idempotent. The Scheduler service agent
+# (service-<project-num>@gcp-sa-cloudscheduler...) is auto-provisioned
+# the first time the API is enabled — its existence is required by the
+# tokenCreator binding below.
+gcloud services enable cloudscheduler.googleapis.com --project="${PROJECT_ID}" >/dev/null
+# Give the service-agent provisioning a moment to land.
+sleep 5
+
 # Allow Scheduler to mint OIDC tokens for the runtime SA. Idempotent.
 gcloud iam service-accounts add-iam-policy-binding "${RUNTIME_SA}" \
   --project="${PROJECT_ID}" \
   --member="serviceAccount:service-$(gcloud projects describe "${PROJECT_ID}" --format='value(projectNumber)')@gcp-sa-cloudscheduler.iam.gserviceaccount.com" \
   --role="roles/iam.serviceAccountTokenCreator" \
   --condition=None >/dev/null
+
+# Allow the runtime SA to invoke the main Cloud Run service. The minted
+# OIDC token authenticates as the runtime SA; Cloud Run's IAM gate then
+# checks that principal for `roles/run.invoker`. Idempotent.
+gcloud run services add-iam-policy-binding "itr-client-hq" \
+  --region="${REGION}" \
+  --project="${PROJECT_ID}" \
+  --member="serviceAccount:${RUNTIME_SA}" \
+  --role="roles/run.invoker" >/dev/null
 
 # Create or update the job. Cloud Scheduler doesn't have a single
 # `create-or-update`; use describe→update / create accordingly.
