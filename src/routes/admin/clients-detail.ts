@@ -46,6 +46,8 @@ adminClientsDetailRoute.get('/:id', async (c) => {
       halfDayRateCents: retreats.halfDayRateCents,
       depositCents: retreats.depositCents,
       totalPlannedCents: retreats.totalPlannedCents,
+      scheduledStartDate: retreats.scheduledStartDate,
+      scheduledEndDate: retreats.scheduledEndDate,
       createdAt: retreats.createdAt,
       clientFirstName: clients.firstName,
       clientLastName: clients.lastName,
@@ -138,6 +140,24 @@ adminClientsDetailRoute.get('/:id', async (c) => {
     })
     .join('');
 
+  const depositPaid = audits.some((a) => a.eventType === 'deposit_paid');
+  const showConfirmDates = row.state === 'awaiting_deposit' && depositPaid;
+
+  const scheduleBlock = (() => {
+    if (row.scheduledStartDate && row.scheduledEndDate) {
+      return `<h2>Scheduled dates</h2>
+  <div class="grid">
+    <div>Start</div><div>${escHtml(row.scheduledStartDate)}</div>
+    <div>End</div><div>${escHtml(row.scheduledEndDate)}</div>
+  </div>`;
+    }
+    if (showConfirmDates) {
+      return `<h2>Next step</h2>
+  <p><a class="cta" href="/admin/clients/${escAttr(row.retreatId)}/confirm-dates">Confirm retreat dates</a></p>`;
+    }
+    return '';
+  })();
+
   const auditList = audits
     .map(
       (a) =>
@@ -195,6 +215,8 @@ adminClientsDetailRoute.get('/:id', async (c) => {
     <div>Deposit</div><div>${formatCents(row.depositCents)}</div>
     <div>Pricing notes</div><div>${escHtml(row.pricingNotes ?? '')}</div>
   </div>
+
+  ${scheduleBlock}
 
   <h2>Required consents</h2>
   <ul>${consentsList}</ul>

@@ -22,6 +22,15 @@ import { log } from './phi-redactor.js';
 const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.send';
 const SUBJECT_USER = 'clients@intensivetherapyretreat.com';
 
+export interface MailAttachment {
+  /** Final filename. PHI-free per DESIGN §8 (e.g. "retreat.ics"). */
+  filename: string;
+  /** e.g. "text/calendar; method=PUBLISH; charset=UTF-8". */
+  mimeType: string;
+  /** Raw content. Strings are encoded UTF-8 before base64. */
+  content: Buffer | string;
+}
+
 export interface SendArgs {
   to: string;
   subject: string;
@@ -29,6 +38,9 @@ export interface SendArgs {
   htmlBody: string;
   /** From header. Defaults to the impersonated subject user. */
   fromName?: string;
+  /** Optional MIME attachments. Each is base64-encoded into a multipart/mixed
+   *  envelope wrapping the text/html alternative. */
+  attachments?: MailAttachment[];
 }
 
 export interface SendResult {
@@ -64,21 +76,59 @@ async function loadServiceAccountKey(): Promise<{
   return cachedKey;
 }
 
+function rand(): string {
+  return `${Math.random().toString(36).slice(2)}_${Date.now()}`;
+}
+
 function rfc2822(args: SendArgs): string {
   const from = args.fromName
     ? `${args.fromName} <${SUBJECT_USER}>`
     : SUBJECT_USER;
-  const boundary = `b_${Math.random().toString(36).slice(2)}_${Date.now()}`;
+  const altBoundary = `alt_${rand()}`;
 
+  const altPart = buildAlternative(args, altBoundary);
+
+  const hasAttachments = (args.attachments?.length ?? 0) > 0;
+  if (!hasAttachments) {
+    const headers = [
+      `From: ${from}`,
+      `To: ${args.to}`,
+      `Subject: ${encodeHeader(args.subject)}`,
+      'MIME-Version: 1.0',
+      `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
+      '',
+    ].join('\r\n');
+    return `${headers}\r\n${altPart}`;
+  }
+
+  const mixedBoundary = `mixed_${rand()}`;
   const headers = [
     `From: ${from}`,
     `To: ${args.to}`,
     `Subject: ${encodeHeader(args.subject)}`,
     'MIME-Version: 1.0',
-    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    `Content-Type: multipart/mixed; boundary="${mixedBoundary}"`,
     '',
   ].join('\r\n');
 
+  const altWrapped = [
+    `--${mixedBoundary}`,
+    `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
+    '',
+    altPart.replace(/\r\n$/, ''),
+    '',
+  ].join('\r\n');
+
+  const attachmentParts = (args.attachments ?? [])
+    .map((a) => buildAttachmentPart(a, mixedBoundary))
+    .join('');
+
+  const closing = `--${mixedBoundary}--\r\n`;
+
+  return `${headers}\r\n${altWrapped}\r\n${attachmentParts}${closing}`;
+}
+
+function buildAlternative(args: SendArgs, boundary: string): string {
   const text = [
     `--${boundary}`,
     'Content-Type: text/plain; charset="UTF-8"',
@@ -99,7 +149,21 @@ function rfc2822(args: SendArgs): string {
     '',
   ].join('\r\n');
 
-  return `${headers}\r\n${text}${html}`;
+  return `${text}${html}`;
+}
+
+function buildAttachmentPart(att: MailAttachment, boundary: string): string {
+  const buf = typeof att.content === 'string' ? Buffer.from(att.content, 'utf8') : att.content;
+  const b64 = buf.toString('base64').replace(/(.{76})/g, '$1\r\n');
+  const trailing = b64.endsWith('\r\n') ? '' : '\r\n';
+  return [
+    `--${boundary}`,
+    `Content-Type: ${att.mimeType}`,
+    'Content-Transfer-Encoding: base64',
+    `Content-Disposition: attachment; filename="${att.filename.replaceAll('"', '')}"`,
+    '',
+    `${b64}${trailing}`,
+  ].join('\r\n');
 }
 
 function encodeHeader(s: string): string {
