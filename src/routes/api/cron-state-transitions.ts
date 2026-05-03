@@ -1,0 +1,85 @@
+/**
+ * /api/cron/state-transitions — Cloud Scheduler target (DESIGN.md §10).
+ *
+ * Auth model:
+ *   - Cloud Scheduler is configured with an OIDC token addressed at the
+ *     runtime SA. Cloud Run's IAM gate verifies the token at the GFE,
+ *     so by the time the request reaches the app it is already authn'd
+ *     as the runtime SA.
+ *   - Defense-in-depth: if `CRON_SHARED_SECRET` is bound, additionally
+ *     require an `X-Cron-Secret` header match. When unset (dev), the
+ *     header check is skipped.
+ *
+ * Behaviour:
+ *   - Selects retreats with `state='scheduled'` AND
+ *     `scheduled_start_date <= today (UTC)`.
+ *   - For each, calls `transitions.markInProgress` which is idempotent.
+ *   - Returns a JSON summary `{ checked, transitioned, errors }`.
+ *
+ * No PHI in response or logs.
+ */
+
+import { Hono } from 'hono';
+import { and, eq, lte } from 'drizzle-orm';
+
+import { getDb } from '../../db/client.js';
+import { retreats } from '../../db/schema.js';
+import { log } from '../../lib/phi-redactor.js';
+import { transitions } from '../../lib/state-machine.js';
+
+export const cronStateTransitionsRoute = new Hono();
+
+cronStateTransitionsRoute.post('/state-transitions', async (c) => {
+  const expected = process.env.CRON_SHARED_SECRET;
+  if (expected) {
+    const got = c.req.header('x-cron-secret');
+    if (got !== expected) {
+      log.warn('cron_state_transitions_unauthorized', {});
+      return c.json({ error: 'unauthorized' }, 401);
+    }
+  }
+
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD UTC
+  const { db } = await getDb();
+
+  const due = await db
+    .select({ id: retreats.id })
+    .from(retreats)
+    .where(
+      and(
+        eq(retreats.state, 'scheduled'),
+        lte(retreats.scheduledStartDate, today),
+      ),
+    );
+
+  let transitioned = 0;
+  const errors: { retreatId: string; error: string }[] = [];
+
+  for (const r of due) {
+    try {
+      await transitions.markInProgress({
+        retreatId: r.id,
+        actor: { kind: 'system' },
+      });
+      transitioned += 1;
+    } catch (err) {
+      const error = (err as Error).message;
+      log.error('cron_mark_in_progress_failed', { retreatId: r.id, error });
+      errors.push({ retreatId: r.id, error });
+    }
+  }
+
+  log.info('cron_state_transitions_run', {
+    today,
+    checked: due.length,
+    transitioned,
+    errorCount: errors.length,
+  });
+
+  return c.json({
+    today,
+    checked: due.length,
+    transitioned,
+    errors,
+  });
+});

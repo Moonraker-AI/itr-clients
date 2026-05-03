@@ -16,7 +16,7 @@ import { and, eq } from 'drizzle-orm';
 
 import { getDb } from '../db/client.js';
 import { emailLog, notificationRecipients } from '../db/schema.js';
-import { sendEmail } from './gmail.js';
+import { sendEmail, type MailAttachment } from './gmail.js';
 import { log } from './phi-redactor.js';
 
 export type NotifyEvent =
@@ -45,6 +45,8 @@ interface ConsentPackageSentArgs extends BaseNotifyArgs {
 interface SimpleEventArgs extends BaseNotifyArgs {
   event: Exclude<NotifyEvent, 'consent_package_sent'>;
   adminUrl: string;
+  /** Optional MIME attachments. Used by `dates_confirmed` to ship the .ics. */
+  attachments?: MailAttachment[];
 }
 
 export type NotifyArgs = ConsentPackageSentArgs | SimpleEventArgs;
@@ -168,6 +170,9 @@ export async function notify(args: NotifyArgs): Promise<void> {
     recipients.add(args.clientEmail);
   }
 
+  const attachments =
+    args.event !== 'consent_package_sent' ? args.attachments : undefined;
+
   for (const to of recipients) {
     try {
       const res = await sendEmail({
@@ -175,6 +180,7 @@ export async function notify(args: NotifyArgs): Promise<void> {
         subject: composed.subject,
         textBody: composed.textBody,
         htmlBody: composed.htmlBody,
+        ...(attachments && attachments.length > 0 ? { attachments } : {}),
       });
       await db.insert(emailLog).values({
         retreatId: args.retreatId,

@@ -2,8 +2,10 @@ import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 
 import { stripeWebhookRoute } from './routes/api/webhooks-stripe.js';
+import { cronStateTransitionsRoute } from './routes/api/cron-state-transitions.js';
 import { adminClientsDetailRoute } from './routes/admin/clients-detail.js';
 import { adminClientsNewRoute } from './routes/admin/clients-new.js';
+import { adminConfirmDatesRoute } from './routes/admin/confirm-dates.js';
 import { adminPricingRoute } from './routes/admin/pricing.js';
 import { publicCheckoutRoute } from './routes/public/checkout.js';
 import { publicConsentsRoute } from './routes/public/consents.js';
@@ -35,9 +37,13 @@ app.route('/api/webhooks/stripe', stripeWebhookRoute);
 if (!webhookOnly) {
   app.route('/admin/pricing', adminPricingRoute);
   app.route('/admin/clients/new', adminClientsNewRoute);
+  // Confirm-dates routes (`/admin/clients/:id/confirm-dates`) must mount
+  // BEFORE the catch-all detail route or the `/:id` matcher swallows them.
+  app.route('/admin/clients', adminConfirmDatesRoute);
   app.route('/admin/clients', adminClientsDetailRoute);
   app.route('/c', publicConsentsRoute);
   app.route('/c', publicCheckoutRoute);
+  app.route('/api/cron', cronStateTransitionsRoute);
 }
 
 app.notFound((c) => c.json({ error: 'not_found' }, 404));
