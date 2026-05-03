@@ -154,9 +154,10 @@ async function main() {
       .values({ id: 'singleton' })
       .onConflictDoNothing({ target: pricingConfig.id });
 
-    // Notification recipients (DESIGN §8). team@ gets every event;
-    // each therapist gets only the two action-required events.
-    const TEAM = 'team@intensivetherapyretreat.com';
+    // Notification recipients (DESIGN §8). The shared inbox gets every
+    // event; each therapist gets only the two action-required events.
+    // (Was team@ in M2 seed; switched to support@ in 0003 migration.)
+    const TEAM = 'support@intensivetherapyretreat.com';
     const ALL_EVENTS = [
       'consent_package_sent',
       'consents_signed',
