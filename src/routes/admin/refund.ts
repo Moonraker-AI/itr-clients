@@ -20,6 +20,7 @@ import {
   payments,
   retreats,
 } from '../../db/schema.js';
+import { therapistCanAccess } from '../../lib/auth.js';
 import { log } from '../../lib/phi-redactor.js';
 import { formatCents } from '../../lib/pricing.js';
 import { refundPayment } from '../../lib/stripe.js';
@@ -34,6 +35,7 @@ adminRefundRoute.get('/:id/refund', async (c) => {
     .select({
       retreatId: retreats.id,
       state: retreats.state,
+      therapistId: retreats.therapistId,
       clientFirstName: clients.firstName,
       clientLastName: clients.lastName,
     })
@@ -41,6 +43,7 @@ adminRefundRoute.get('/:id/refund', async (c) => {
     .innerJoin(clients, eq(retreats.clientId, clients.id))
     .where(eq(retreats.id, id));
   if (!r) return c.notFound();
+  if (!therapistCanAccess(c.get('user'), r.therapistId)) return c.notFound();
 
   const refundable = await db
     .select({
@@ -80,10 +83,15 @@ adminRefundRoute.post('/:id/refund', async (c) => {
 
   const { db } = await getDb();
   const [retreat] = await db
-    .select({ retreatId: retreats.id, clientId: retreats.clientId })
+    .select({
+      retreatId: retreats.id,
+      clientId: retreats.clientId,
+      therapistId: retreats.therapistId,
+    })
     .from(retreats)
     .where(eq(retreats.id, id));
   if (!retreat) return c.notFound();
+  if (!therapistCanAccess(c.get('user'), retreat.therapistId)) return c.notFound();
 
   const [target] = await db
     .select({

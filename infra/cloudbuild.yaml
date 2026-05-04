@@ -89,7 +89,10 @@ steps:
       # _STRIPE_PUBLISHABLE_KEY is the per-env Stripe publishable key
       # (pk_test_… in dev, pk_live_… in prod). Designed to be browser-
       # visible — not a secret, plain env-var binding is fine.
-      - --set-env-vars=NODE_ENV=production,CLOUD_SQL_INSTANCE=$_CLOUD_SQL_INSTANCE,STRIPE_PUBLISHABLE_KEY=$_STRIPE_PUBLISHABLE_KEY
+      # _AUTH_ENABLED + _FIREBASE_* are the M8 Identity Platform bindings.
+      # Default empty (auth disabled, no-op fallthrough) until each env is
+      # provisioned + the GitHub repo vars FIREBASE_* / AUTH_ENABLED_* are set.
+      - --set-env-vars=NODE_ENV=production,CLOUD_SQL_INSTANCE=$_CLOUD_SQL_INSTANCE,STRIPE_PUBLISHABLE_KEY=$_STRIPE_PUBLISHABLE_KEY,AUTH_ENABLED=$_AUTH_ENABLED,FIREBASE_PROJECT_ID=$_FIREBASE_PROJECT_ID,FIREBASE_AUTH_DOMAIN=$_FIREBASE_AUTH_DOMAIN,FIREBASE_API_KEY=$_FIREBASE_API_KEY
       # _GMAIL_SECRETS_PART is "" in dev (no gmail bind → gmail.ts auto-dry-runs)
       # and ",GMAIL_SERVICE_ACCOUNT_KEY=gmail-service-account:latest" in prod.
       # Stripe secrets are always bound; dev points at test-mode values, prod
@@ -133,6 +136,10 @@ steps:
 
 substitutions:
   _GMAIL_SECRETS_PART: ''
+  _AUTH_ENABLED: ''
+  _FIREBASE_PROJECT_ID: ''
+  _FIREBASE_AUTH_DOMAIN: ''
+  _FIREBASE_API_KEY: ''
 
 options:
   logging: CLOUD_LOGGING_ONLY

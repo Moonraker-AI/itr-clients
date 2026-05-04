@@ -14,6 +14,7 @@ import { and, eq } from 'drizzle-orm';
 
 import { getDb } from '../../db/client.js';
 import { auditEvents, clients, retreats } from '../../db/schema.js';
+import { therapistCanAccess } from '../../lib/auth.js';
 import { log } from '../../lib/phi-redactor.js';
 import { transitions } from '../../lib/state-machine.js';
 
@@ -27,6 +28,7 @@ adminConfirmDatesRoute.get('/:id/confirm-dates', async (c) => {
     .select({
       retreatId: retreats.id,
       state: retreats.state,
+      therapistId: retreats.therapistId,
       plannedFullDays: retreats.plannedFullDays,
       plannedHalfDays: retreats.plannedHalfDays,
       clientFirstName: clients.firstName,
@@ -36,6 +38,7 @@ adminConfirmDatesRoute.get('/:id/confirm-dates', async (c) => {
     .innerJoin(clients, eq(retreats.clientId, clients.id))
     .where(eq(retreats.id, id));
   if (!row) return c.notFound();
+  if (!therapistCanAccess(c.get('user'), row.therapistId)) return c.notFound();
 
   const [paid] = await db
     .select({ id: auditEvents.id })
@@ -63,6 +66,14 @@ adminConfirmDatesRoute.get('/:id/confirm-dates', async (c) => {
 
 adminConfirmDatesRoute.post('/:id/confirm-dates', async (c) => {
   const id = c.req.param('id');
+  const { db } = await getDb();
+  const [owner] = await db
+    .select({ therapistId: retreats.therapistId })
+    .from(retreats)
+    .where(eq(retreats.id, id));
+  if (!owner) return c.notFound();
+  if (!therapistCanAccess(c.get('user'), owner.therapistId)) return c.notFound();
+
   const form = await c.req.formData();
   const startDate = String(form.get('start_date') ?? '').trim();
   const endDate = String(form.get('end_date') ?? '').trim();

@@ -20,6 +20,7 @@ import {
   retreats,
   stripeCustomers,
 } from '../../db/schema.js';
+import { therapistCanAccess } from '../../lib/auth.js';
 import { log } from '../../lib/phi-redactor.js';
 import { transitions } from '../../lib/state-machine.js';
 import { chargeFinalBalance } from '../../lib/stripe.js';
@@ -35,6 +36,7 @@ adminCompleteRoute.get('/:id/complete', async (c) => {
     .select({
       retreatId: retreats.id,
       state: retreats.state,
+      therapistId: retreats.therapistId,
       plannedFullDays: retreats.plannedFullDays,
       plannedHalfDays: retreats.plannedHalfDays,
       actualFullDays: retreats.actualFullDays,
@@ -49,6 +51,7 @@ adminCompleteRoute.get('/:id/complete', async (c) => {
     .innerJoin(clients, eq(retreats.clientId, clients.id))
     .where(eq(retreats.id, id));
   if (!row) return c.notFound();
+  if (!therapistCanAccess(c.get('user'), row.therapistId)) return c.notFound();
 
   const error = c.req.query('error');
 
@@ -71,6 +74,14 @@ adminCompleteRoute.get('/:id/complete', async (c) => {
 
 adminCompleteRoute.post('/:id/complete', async (c) => {
   const id = c.req.param('id');
+  const { db } = await getDb();
+  const [owner] = await db
+    .select({ therapistId: retreats.therapistId })
+    .from(retreats)
+    .where(eq(retreats.id, id));
+  if (!owner) return c.notFound();
+  if (!therapistCanAccess(c.get('user'), owner.therapistId)) return c.notFound();
+
   const form = await c.req.formData();
   const actualFullDays = Number(form.get('actual_full_days') ?? 0);
   const actualHalfDays = Number(form.get('actual_half_days') ?? 0);
@@ -101,7 +112,6 @@ adminCompleteRoute.post('/:id/complete', async (c) => {
     return c.redirect(`/admin/clients/${id}/complete?error=${code}`);
   }
 
-  const { db } = await getDb();
   const [r] = await db
     .select({
       retreatId: retreats.id,
