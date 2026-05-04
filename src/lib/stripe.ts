@@ -460,6 +460,80 @@ export function verifyWebhookSignature(args: {
 }
 
 /**
+ * Refund a previously-succeeded PaymentIntent (DESIGN §6 cancellation/
+ * refund, M7). Idempotent on `idempotencyKey` — caller passes
+ * `refund:<paymentIntentId>:<attempt>` so retried submissions don't
+ * double-refund.
+ *
+ *   - amountCents=null  → full refund of the remaining refundable amount.
+ *   - amountCents>0     → partial refund.
+ *
+ * Stripe accepts an enumerated `reason` of
+ * `duplicate | fraudulent | requested_by_customer`. We always pass
+ * `requested_by_customer` (operationally accurate for retreats) and
+ * record the admin's free-text reason in our payments table + audit
+ * event payload — never in Stripe metadata, where free-text could be PHI.
+ */
+export interface RefundPaymentArgs {
+  paymentIntentId: string;
+  /** null = full remaining refundable amount. */
+  amountCents: number | null;
+  idempotencyKey: string;
+  retreatId: string;
+  clientId: string;
+}
+
+export interface RefundPaymentResult {
+  refundId: string;
+  amountCents: number;
+  status: string;
+  dryRun: boolean;
+}
+
+export async function refundPayment(
+  args: RefundPaymentArgs,
+): Promise<RefundPaymentResult> {
+  const description = 'Retreat refund';
+  assertDescription(description);
+  const metadata = {
+    client_id: args.clientId,
+    retreat_id: args.retreatId,
+    payment_kind: 'refund',
+  };
+  assertMetadata(metadata);
+
+  if (dryRun()) {
+    log.info('stripe_dry_run_refund', {
+      paymentIntentId: args.paymentIntentId,
+      amount: args.amountCents,
+    });
+    return {
+      refundId: `re_dryrun_${args.retreatId.slice(0, 8)}`,
+      amountCents: args.amountCents ?? 0,
+      status: 'succeeded',
+      dryRun: true,
+    };
+  }
+
+  const client = getClient()!;
+  const refund = await client.refunds.create(
+    {
+      payment_intent: args.paymentIntentId,
+      ...(args.amountCents != null ? { amount: args.amountCents } : {}),
+      reason: 'requested_by_customer',
+      metadata,
+    },
+    { idempotencyKey: args.idempotencyKey },
+  );
+  return {
+    refundId: refund.id,
+    amountCents: refund.amount,
+    status: refund.status ?? 'unknown',
+    dryRun: false,
+  };
+}
+
+/**
  * Create a Stripe Customer Portal session so the client can update their
  * saved payment method (DESIGN §6 failure recovery, M6). Returned URL is
  * a one-shot Stripe-hosted page; we redirect the client to it.
