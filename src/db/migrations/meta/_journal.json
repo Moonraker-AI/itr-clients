@@ -43,6 +43,13 @@
       "when": 1778257200000,
       "tag": "0005_partial_unique_payments_pi",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1778257800000,
+      "tag": "0006_email_status_failed",
+      "breakpoints": true
     }
   ]
 }

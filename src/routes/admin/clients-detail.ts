@@ -107,6 +107,7 @@ adminClientsDetailRoute.get('/:id', async (c) => {
       recipient: emailLog.recipient,
       templateName: emailLog.templateName,
       gmailMessageId: emailLog.gmailMessageId,
+      status: emailLog.status,
       sentAt: emailLog.sentAt,
     })
     .from(emailLog)
@@ -185,10 +186,13 @@ adminClientsDetailRoute.get('/:id', async (c) => {
     .join('');
 
   const emailList = emails
-    .map(
-      (e) =>
-        `<tr><td>${escHtml(e.sentAt.toISOString())}</td><td>${escHtml(e.templateName)}</td><td>${escHtml(e.recipient)}</td><td><code>${escHtml(e.gmailMessageId ?? '')}</code></td></tr>`,
-    )
+    .map((e) => {
+      const statusCell =
+        e.status === 'failed'
+          ? `<td style="color:#a00"><strong>${escHtml(e.status)}</strong></td>`
+          : `<td>${escHtml(e.status)}</td>`;
+      return `<tr><td>${escHtml(e.sentAt.toISOString())}</td><td>${escHtml(e.templateName)}</td><td>${escHtml(e.recipient)}</td>${statusCell}<td><code>${escHtml(e.gmailMessageId ?? '')}</code></td></tr>`;
+    })
     .join('');
 
   return c.html(`<!doctype html>
@@ -249,7 +253,7 @@ adminClientsDetailRoute.get('/:id', async (c) => {
   <table><thead><tr><th>When</th><th>Event</th><th>Actor</th><th>Payload</th></tr></thead><tbody>${auditList}</tbody></table>
 
   <h2>Email log</h2>
-  <table><thead><tr><th>When</th><th>Template</th><th>Recipient</th><th>Gmail message id</th></tr></thead><tbody>${emailList}</tbody></table>
+  <table><thead><tr><th>When</th><th>Template</th><th>Recipient</th><th>Status</th><th>Gmail message id</th></tr></thead><tbody>${emailList}</tbody></table>
 </body>
 </html>`);
 });
