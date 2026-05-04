@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 
 import { stripeWebhookRoute } from './routes/api/webhooks-stripe.js';
 import { cronStateTransitionsRoute } from './routes/api/cron-state-transitions.js';
+import { cronRetryFailedChargesRoute } from './routes/api/cron-retry-failed-charges.js';
 import { adminClientsDetailRoute } from './routes/admin/clients-detail.js';
 import { adminClientsNewRoute } from './routes/admin/clients-new.js';
 import { adminCompleteRoute } from './routes/admin/complete.js';
@@ -10,6 +11,7 @@ import { adminConfirmDatesRoute } from './routes/admin/confirm-dates.js';
 import { adminPricingRoute } from './routes/admin/pricing.js';
 import { publicCheckoutRoute } from './routes/public/checkout.js';
 import { publicConsentsRoute } from './routes/public/consents.js';
+import { publicPaymentRoute } from './routes/public/payment.js';
 import { log } from './lib/phi-redactor.js';
 
 const app = new Hono();
@@ -46,7 +48,9 @@ if (!webhookOnly) {
   app.route('/admin/clients', adminClientsDetailRoute);
   app.route('/c', publicConsentsRoute);
   app.route('/c', publicCheckoutRoute);
+  app.route('/c', publicPaymentRoute);
   app.route('/api/cron', cronStateTransitionsRoute);
+  app.route('/api/cron', cronRetryFailedChargesRoute);
 }
 
 app.notFound((c) => c.json({ error: 'not_found' }, 404));

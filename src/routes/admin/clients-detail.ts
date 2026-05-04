@@ -165,7 +165,11 @@ adminClientsDetailRoute.get('/:id', async (c) => {
     }
     if (row.state === 'final_charge_failed') {
       return `<h2 style="color:#a00">Final charge failed</h2>
-  <p>Recovery flow lands in M6. For now, see the <code>final_charge_failed</code> audit row for the failure code.</p>`;
+  <p>Auto-retry runs at 24h then 72h cadence via the retry cron. Client recovery links:</p>
+  <ul>
+    <li>Update saved card (Stripe portal): <code>${escHtml(publicBase)}/c/${escHtml(row.clientToken)}/update-payment</code></li>
+    <li>3DS hosted-confirmation page (only meaningful when last failure was <code>requires_action</code>): <code>${escHtml(publicBase)}/c/${escHtml(row.clientToken)}/confirm-payment</code></li>
+  </ul>`;
     }
     return '';
   })();

@@ -35,6 +35,7 @@ import {
 import { buildIcs } from './ics.js';
 import { notify } from './notifications.js';
 import { log } from './phi-redactor.js';
+import { chargeFinalBalance } from './stripe.js';
 
 export const RETREAT_STATES = [
   'draft',
@@ -825,6 +826,11 @@ export const transitions = {
     amountCents?: number;
     /** Stripe PI client_secret — populated for `requires_action` only. */
     clientSecret?: string;
+    /** Which attempt this failure represents (1 = first try, 2 = first
+     *  retry, 3 = final retry). When `attempt === 3` the retry pool is
+     *  exhausted and we additionally fire the `final_charge_retry_exhausted`
+     *  escalation email. Defaults to 1. */
+    attempt?: number;
   }): Promise<void> {
     const { db } = await getDb();
 
@@ -895,11 +901,159 @@ export const transitions = {
       adminUrl: `${adminBaseUrl()}/admin/clients/${args.retreatId}`,
     });
 
+    if ((args.attempt ?? 1) >= 3) {
+      await notify({
+        event: 'final_charge_retry_exhausted',
+        retreatId: args.retreatId,
+        adminUrl: `${adminBaseUrl()}/admin/clients/${args.retreatId}`,
+      });
+    }
+
     log.info('state_transition', {
       retreatId: args.retreatId,
       to: 'final_charge_failed',
       failureCode: args.failureCode,
+      attempt: args.attempt ?? 1,
     });
   },
 } as const;
+
+/**
+ * One retry pass over a single `final_charge_failed` retreat (M6).
+ *
+ *   - Looks up the retreat, verifies state.
+ *   - Computes the remaining balance (total_actual - sum of succeeded payments).
+ *   - Counts prior failed final-kind payments to derive the next attempt #.
+ *   - Caps at 3 total attempts (1 initial + 2 retries).
+ *   - Calls `chargeFinalBalance` with idempotency key `final:<retreatId>:<N>`.
+ *   - Success path → `markCompleted`.
+ *   - Failure path → `markFinalChargeFailed` (with `attempt=N` so the
+ *     transition fires the exhaustion notify when N reaches 3).
+ *
+ * The cron route is the only intended caller. Returns a small status
+ * object so the caller can aggregate counts.
+ */
+export type RetryOutcome =
+  | 'succeeded'
+  | 'failed_will_retry'
+  | 'failed_exhausted'
+  | 'skipped_no_pm'
+  | 'skipped_zero_balance'
+  | 'skipped_max_attempts';
+
+export async function retryFailedCharge(args: {
+  retreatId: string;
+  actor: Actor;
+}): Promise<{ outcome: RetryOutcome; attempt: number }> {
+  const { db } = await getDb();
+  const [r] = await db.select().from(retreats).where(eq(retreats.id, args.retreatId));
+  if (!r) throw new Error(`retreat not found: ${args.retreatId}`);
+  if (r.state !== 'final_charge_failed') {
+    throw new Error(
+      `retryFailedCharge: retreat state is ${r.state}, expected final_charge_failed`,
+    );
+  }
+  if (r.totalActualCents == null) {
+    throw new Error('retryFailedCharge: total_actual_cents is null');
+  }
+
+  // Count prior final attempts (success or failure) to derive next attempt #.
+  const priorRows = await db
+    .select({
+      id: payments.id,
+      status: payments.status,
+      amountCents: payments.amountCents,
+    })
+    .from(payments)
+    .where(and(eq(payments.retreatId, args.retreatId), eq(payments.kind, 'final')));
+  const priorAttempts = priorRows.length;
+  const succeededFinalCents = priorRows
+    .filter((p) => p.status === 'succeeded')
+    .reduce((acc, p) => acc + p.amountCents, 0);
+  const succeededDepositCents = (
+    await db
+      .select({ amountCents: payments.amountCents })
+      .from(payments)
+      .where(
+        and(
+          eq(payments.retreatId, args.retreatId),
+          eq(payments.kind, 'deposit'),
+          eq(payments.status, 'succeeded'),
+        ),
+      )
+  ).reduce((acc, p) => acc + p.amountCents, 0);
+
+  if (priorAttempts >= 3) {
+    return { outcome: 'skipped_max_attempts', attempt: priorAttempts };
+  }
+  const attempt = priorAttempts + 1;
+
+  const balance =
+    r.totalActualCents - succeededDepositCents - succeededFinalCents;
+  if (balance <= 0) {
+    // Should not happen when state is final_charge_failed, but defend.
+    return { outcome: 'skipped_zero_balance', attempt };
+  }
+
+  const [sc] = await db
+    .select({
+      stripeCustomerId: stripeCustomers.stripeCustomerId,
+      defaultPaymentMethodId: stripeCustomers.defaultPaymentMethodId,
+    })
+    .from(stripeCustomers)
+    .where(eq(stripeCustomers.clientId, r.clientId));
+
+  if (!sc || !sc.defaultPaymentMethodId) {
+    log.warn('retry_failed_charge_no_pm', { retreatId: args.retreatId, attempt });
+    await transitions.markFinalChargeFailed({
+      retreatId: args.retreatId,
+      actor: args.actor,
+      failureCode: 'no_saved_payment_method',
+      failureMessage:
+        'no saved payment method on stripe_customers — cannot off-session charge',
+      attempt,
+    });
+    return {
+      outcome: attempt >= 3 ? 'failed_exhausted' : 'skipped_no_pm',
+      attempt,
+    };
+  }
+
+  const charge = await chargeFinalBalance({
+    retreatId: args.retreatId,
+    clientId: r.clientId,
+    stripeCustomerId: sc.stripeCustomerId,
+    paymentMethodId: sc.defaultPaymentMethodId,
+    amountCents: balance,
+    idempotencyKey: `final:${args.retreatId}:${attempt}`,
+  });
+
+  if (charge.status === 'succeeded') {
+    await transitions.markCompleted({
+      retreatId: args.retreatId,
+      actor: args.actor,
+      stripePaymentIntentId: charge.paymentIntentId,
+      ...(charge.chargeId ? { stripeChargeId: charge.chargeId } : {}),
+      amountCents: balance,
+    });
+    return { outcome: 'succeeded', attempt };
+  }
+
+  await transitions.markFinalChargeFailed({
+    retreatId: args.retreatId,
+    actor: args.actor,
+    failureCode: charge.failureCode ?? 'unknown',
+    failureMessage: charge.failureMessage ?? '',
+    ...(charge.paymentIntentId
+      ? { stripePaymentIntentId: charge.paymentIntentId }
+      : {}),
+    amountCents: balance,
+    ...(charge.clientSecret ? { clientSecret: charge.clientSecret } : {}),
+    attempt,
+  });
+  return {
+    outcome: attempt >= 3 ? 'failed_exhausted' : 'failed_will_retry',
+    attempt,
+  };
+}
 
