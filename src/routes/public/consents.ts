@@ -270,7 +270,18 @@ publicConsentsRoute.post('/:token/consents', bodyLimit({
           error: (err as Error).message.slice(0, 200),
         },
       })
-      .catch(() => undefined);
+      // Audit tier-9: if the audit-row insert ALSO fails, the only
+      // remaining trace is this log line — surface it loudly so ops can
+      // reconstruct what happened. Don't re-throw: the consent signature
+      // was already inserted and we still want to advance the flow.
+      .catch((auditErr: unknown) => {
+        log.error('pdf_upload_failed_audit_write_failed', {
+          retreatId: ctx.retreatId,
+          signatureId: sig.id,
+          pdfError: (err as Error).message,
+          auditError: (auditErr as Error).message,
+        });
+      });
   }
 
   // If this was the last required signature, transition.
