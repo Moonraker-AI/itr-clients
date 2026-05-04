@@ -57,6 +57,8 @@ async function buildPool(): Promise<pg.Pool> {
 
   // Migration path: Cloud Run Job mounts /cloudsql/<INSTANCE> as a unix
   // socket via --add-cloudsql-instances. No VPC config required.
+  // Cold-start latency on the socket can exceed the runtime 5s; allow
+  // 60s for migrate to finish provisioning the connection.
   if (process.env.MIGRATE_VIA_SOCKET === '1') {
     const pool = new pg.Pool({
       host: `/cloudsql/${instance}`,
@@ -64,8 +66,8 @@ async function buildPool(): Promise<pg.Pool> {
       password,
       database,
       max: 2,
-      idleTimeoutMillis: POOL_DEFAULTS.idleTimeoutMillis,
-      connectionTimeoutMillis: POOL_DEFAULTS.connectionTimeoutMillis,
+      idleTimeoutMillis: 30_000,
+      connectionTimeoutMillis: 60_000,
     });
     attachStatementTimeout(pool);
     return pool;
