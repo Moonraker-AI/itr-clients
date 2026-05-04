@@ -232,9 +232,27 @@ export async function notify(args: NotifyArgs): Promise<void> {
         retreatId: args.retreatId,
         error: (err as Error).message,
       });
-      // We deliberately do NOT throw — one failed recipient must not abort
-      // the rest of the fan-out, and the state-machine commit must not be
-      // gated on email delivery.
+      // Audit #28: durable per-recipient failure record. The state-machine
+      // commit is NOT gated on email delivery (one bad recipient must not
+      // abort the fan-out), but we still need a row in email_log so an
+      // operator can later answer "did this recipient ever receive X?"
+      // Best-effort: if even this insert fails (DB outage), the ERROR log
+      // above is the last line of defense.
+      try {
+        await db.insert(emailLog).values({
+          retreatId: args.retreatId,
+          recipient: to,
+          templateName: composed.templateName,
+          gmailMessageId: null,
+          status: 'failed',
+        });
+      } catch (logErr) {
+        log.error('notify_email_log_insert_failed', {
+          event: args.event,
+          retreatId: args.retreatId,
+          error: (logErr as Error).message,
+        });
+      }
     }
   }
 }

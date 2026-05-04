@@ -64,6 +64,7 @@ export const emailStatus = pgEnum('email_status', [
   'delivered',
   'bounced',
   'complained',
+  'failed',
 ]);
 
 export const paymentKind = pgEnum('payment_kind', ['deposit', 'final', 'refund']);
@@ -334,6 +335,13 @@ export const auditEvents = pgTable('audit_events', {
  * belongs to. Export pipelines must redact `recipient` (or hash it) when
  * leaving the production project. Rows with `retreat_id IS NULL` (system
  * notifications to team@itr) are non-PHI and may be exported as-is.
+ *
+ * Status semantics:
+ *   sent       — gmail.send() returned a messageId; gmail_message_id is set
+ *   delivered  — webhook/poll confirmed delivery (not currently emitted)
+ *   bounced    — recipient address rejected (not currently emitted)
+ *   complained — spam-flagged (not currently emitted)
+ *   failed     — send raised; gmail_message_id is null (audit #28)
  */
 export const emailLog = pgTable('email_log', {
   id: uuid('id').primaryKey().defaultRandom(),
