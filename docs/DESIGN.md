@@ -3,8 +3,8 @@
 > Client management system for [Intensive Therapy Retreats](https://www.intensivetherapyretreat.com).
 > Replaces the GoHighLevel-based intake, consent, and billing flow.
 
-**Status:** M0 complete (skeleton deployed to dev), implementation in progress
-**Last updated:** April 30, 2026
+**Status:** M0–M9 shipped to dev (auth + payments + audit hardening); v0.8.4 in prod, next tag = v0.8.5
+**Last updated:** May 5, 2026
 
 ---
 
@@ -52,7 +52,7 @@ ITR runs intensive trauma-therapy retreats across 4 locations (Northampton MA, E
 | ORM | **Drizzle** with `drizzle-kit` for migrations | n/a |
 | File storage | **Cloud Storage** (separate buckets for PHI vs static assets) | GCP BAA |
 | Secrets | **Secret Manager** | GCP BAA |
-| Auth (deferred) | **Identity Platform** | GCP BAA |
+| Auth | **Identity Platform** (Google sign-in restricted to @intensivetherapyretreat.com) | GCP BAA |
 | Email | **Gmail API** via a `clients@intensivetherapyretreat.com` Workspace mailbox with domain-wide delegation | Workspace BAA (already executed) |
 | Payments | **Stripe** Checkout Session + saved PaymentMethod, off-session PaymentIntent for final balance | Stripe BAA |
 | PDFs | `@react-pdf/renderer` server-side, stored in Cloud Storage | n/a |
@@ -273,10 +273,11 @@ Each consent document generates one PDF with the signed name, evidence block, ti
 
 `notification_recipients` table maps `event_type` → list of email addresses.
 
-Default seed:
-- `team@intensivetherapyretreat.com` (existing shared inbox) gets all admin-action emails
+Default seed (migration 0003 swapped placeholder `team@` → real `support@`):
+- `support@intensivetherapyretreat.com` (existing shared inbox) gets all admin-action emails
 - Each therapist's email gets only **action-required** notifications (deposit paid → please confirm dates; charge failed → action needed)
 - Therapists can see full state in the admin dashboard for non-actionable events
+- Internal subject lines tagged with `[ret #abc12345]` (M9 tier-18) so admins can correlate mailbox alerts to the right retreat without opening the body — the tag is the first 8 chars of `retreat.id`, NOT PHI
 
 ### Email templates (React Email)
 
