@@ -176,6 +176,13 @@ publicConsentsRoute.post('/:token/consents', bodyLimit({
       return c.json({ error: 'signature_required' }, 400);
     }
   }
+  // Cap signed_name at 200 chars. The bodyLimit middleware caps the overall
+  // POST at 1 MB, but a single 999K-char signed_name string would still get
+  // persisted into consent_signatures.signed_name (TEXT) and rendered into
+  // the PDF — pointless and a long-tail abuse vector.
+  if (signedName.length > 200) {
+    return c.json({ error: 'signed_name_too_long' }, 400);
+  }
 
   // Build evidence_blob from required_fields, capturing exactly the keys the
   // template declared and nothing else.

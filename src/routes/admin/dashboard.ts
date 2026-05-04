@@ -29,12 +29,23 @@ const MAX_LIMIT = 200;
 
 adminDashboardRoute.get('/', async (c) => {
   const stateFilter = c.req.query('state') ?? '';
-  const therapistFilter = c.req.query('therapist') ?? '';
-  const limit = Math.min(
-    MAX_LIMIT,
-    Math.max(1, Number(c.req.query('limit') ?? DEFAULT_LIMIT)),
-  );
-  const offset = Math.max(0, Number(c.req.query('offset') ?? 0));
+  const therapistFilterRaw = c.req.query('therapist') ?? '';
+  // UUID shape guard so a malformed `?therapist=` value can't reach drizzle
+  // and surface as a database-level error. Anything off-shape falls back to
+  // "no filter" (treated as "all therapists").
+  const therapistFilter = UUID_RE.test(therapistFilterRaw) ? therapistFilterRaw : '';
+
+  // NaN guards: `Number("not-a-num")` is NaN; Math.min/max propagate NaN
+  // straight to drizzle's .limit()/.offset(), which then throws an opaque
+  // pg error. Coerce to defaults instead.
+  const limitRaw = Number(c.req.query('limit') ?? DEFAULT_LIMIT);
+  const offsetRaw = Number(c.req.query('offset') ?? 0);
+  const limit = Number.isFinite(limitRaw)
+    ? Math.min(MAX_LIMIT, Math.max(1, Math.trunc(limitRaw)))
+    : DEFAULT_LIMIT;
+  const offset = Number.isFinite(offsetRaw)
+    ? Math.max(0, Math.trunc(offsetRaw))
+    : 0;
 
   const { db } = await getDb();
 
@@ -240,3 +251,5 @@ function escHtml(s: string): string {
 function escAttr(s: string): string {
   return escHtml(s).replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 }
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
