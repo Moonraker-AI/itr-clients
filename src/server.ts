@@ -20,8 +20,21 @@ import { publicCheckoutRoute } from './routes/public/checkout.js';
 import { publicConsentsRoute } from './routes/public/consents.js';
 import { publicPaymentRoute } from './routes/public/payment.js';
 import { log } from './lib/phi-redactor.js';
+import { parseTraceId, runWithTrace } from './lib/trace-context.js';
 
 const app = new Hono();
+
+// Trace correlation (audit nit): Cloud Run injects X-Cloud-Trace-Context
+// on every inbound request. Parse the trace id once at the edge and run
+// the rest of the request inside an AsyncLocalStorage scope so any log
+// line emitted (Hono handler, lib/state-machine.ts, lib/stripe.ts, etc.)
+// can attach the magic `logging.googleapis.com/trace` field without
+// threading a context object through every call site. See
+// lib/trace-context.ts and lib/phi-redactor.ts emit().
+app.use('*', async (c, next) => {
+  const traceId = parseTraceId(c.req.header('x-cloud-trace-context'));
+  await runWithTrace(traceId, () => next());
+});
 
 // Standard hardening headers on every response (M9 fix #42 + #43).
 // CSP is intentionally permissive for our two specific external scripts

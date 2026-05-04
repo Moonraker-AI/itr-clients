@@ -26,6 +26,8 @@
  *   - ISO 8601 timestamps with a time component (operational, not DOB-shaped)
  */
 
+import { currentTraceId } from './trace-context.js';
+
 const EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/g;
 const PHONE_RE = /(?:\+?\d[\d\s().-]{8,}\d)/g;
 const SSN_RE = /\b\d{3}-\d{2}-\d{4}\b/g;
@@ -101,12 +103,26 @@ export function redact(value: unknown, depth = 0): unknown {
 /**
  * Structured log entry. Goes to stdout as a single JSON line — Cloud Logging
  * picks up `severity`, `message`, and any other fields automatically.
+ *
+ * Trace correlation (audit nit): when an inbound request had an
+ * X-Cloud-Trace-Context header, server.ts wraps the rest of the request
+ * in an ALS scope; we read that here and emit the magic
+ * `logging.googleapis.com/trace` field so Logs Explorer groups every log
+ * line from the request together. Outside a request (cron startup, server
+ * shutdown) the field is absent and Logs Explorer treats the lines as
+ * standalone, which is correct.
  */
 type LogFields = Record<string, unknown>;
 
 function emit(severity: string, fields: LogFields): void {
   const safe = redact(fields) as LogFields;
-  const line = JSON.stringify({ severity, ...safe });
+  const traceId = currentTraceId();
+  const project = process.env.GOOGLE_CLOUD_PROJECT;
+  const traceField =
+    traceId && project
+      ? { 'logging.googleapis.com/trace': `projects/${project}/traces/${traceId}` }
+      : {};
+  const line = JSON.stringify({ severity, ...safe, ...traceField });
   if (severity === 'ERROR' || severity === 'CRITICAL') {
     process.stderr.write(`${line}\n`);
   } else {
