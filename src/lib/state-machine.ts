@@ -934,6 +934,17 @@ export const transitions = {
     });
 
     if ((args.attempt ?? 1) >= 3) {
+      // Audit #18: emit a structured CRITICAL log so Cloud Monitoring can
+      // alert on stuck retreats independently of the notify() email path.
+      // If Gmail itself is down, the notify_send_failed alarm catches that;
+      // this line is the redundant in-band signal for "manual recovery
+      // required". Threshold tuned in scripts/m7-create-notification-alarm.sh.
+      log.error('CRITICAL_final_charge_retry_exhausted', {
+        retreatId: args.retreatId,
+        failureCode: args.failureCode,
+        failureMessage: args.failureMessage,
+        attempt: args.attempt,
+      });
       await notify({
         event: 'final_charge_retry_exhausted',
         retreatId: args.retreatId,
