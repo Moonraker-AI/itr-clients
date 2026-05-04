@@ -69,10 +69,14 @@ cronRetryFailedChargesRoute.post('/retry-failed-charges', async (c) => {
       .limit(1);
 
     const finalRows = await db
-      .select({ id: payments.id })
+      .select({ status: payments.status })
       .from(payments)
       .where(and(eq(payments.retreatId, r.id), eq(payments.kind, 'final')));
-    const priorAttempts = finalRows.length;
+    // Only failed/requires_action attempts count toward the 3-attempt cap
+    // (M9 fix #16). A succeeded row means the charge already cleared, so
+    // keeping it in the count would prematurely block a recovery retry
+    // after a state flip-flop.
+    const priorAttempts = finalRows.filter((p) => p.status !== 'succeeded').length;
     if (priorAttempts >= 3) {
       // Already exhausted; cron is a no-op for this retreat.
       continue;
@@ -109,6 +113,7 @@ cronRetryFailedChargesRoute.post('/retry-failed-charges', async (c) => {
           break;
         case 'skipped_zero_balance':
         case 'skipped_max_attempts':
+        case 'skipped_concurrent':
           // Don't count toward the retry tallies.
           break;
       }

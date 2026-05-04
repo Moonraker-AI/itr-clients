@@ -26,7 +26,10 @@ import type Stripe from 'stripe';
 
 import { log } from '../../lib/phi-redactor.js';
 import { retrievePaymentIntent, verifyWebhookSignature } from '../../lib/stripe.js';
-import { transitions } from '../../lib/state-machine.js';
+import {
+  IllegalTransitionError,
+  transitions,
+} from '../../lib/state-machine.js';
 
 export const stripeWebhookRoute = new Hono();
 
@@ -54,8 +57,24 @@ stripeWebhookRoute.post('/', async (c) => {
     await dispatch(event);
   } catch (err) {
     // Non-2xx tells Stripe to retry. Throw selectively only for transient
-    // failures; for malformed events we log + 200 to avoid an infinite
-    // retry loop on something we can't process.
+    // failures.
+    //
+    // Stale-event class: an `IllegalTransitionError` means the retreat is
+    // no longer in a state that accepts this event (e.g. retreat already
+    // cancelled, or the handler-side path already advanced state and the
+    // webhook-redundant ack is racing). Retrying for ~3 days won't change
+    // that. Log + 200 (M9 fix #4).
+    //
+    // Everything else is treated as transient and 500'd so Stripe retries.
+    if (err instanceof IllegalTransitionError) {
+      log.warn('stripe_webhook_stale_event_acked', {
+        type: event.type,
+        eventId: event.id,
+        from: err.from,
+        to: err.to,
+      });
+      return c.json({ ok: true, stale: true });
+    }
     log.error('stripe_webhook_dispatch_failed', {
       type: event.type,
       eventId: event.id,

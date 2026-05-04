@@ -16,7 +16,14 @@ import { Hono } from 'hono';
 export const adminLoginRoute = new Hono();
 
 adminLoginRoute.get('/login', (c) => {
-  const returnTo = c.req.query('returnTo') ?? '/admin';
+  // Validate returnTo: must be a same-origin path (M9 fix #6). Reject
+  // anything not starting with a single '/', and reject protocol-relative
+  // ('//x.com') and full URLs ('http://...'). Default to /admin.
+  const rawReturnTo = c.req.query('returnTo') ?? '';
+  const returnTo =
+    rawReturnTo.startsWith('/') && !rawReturnTo.startsWith('//')
+      ? rawReturnTo
+      : '/admin';
   const error = c.req.query('error');
   const apiKey = process.env.FIREBASE_API_KEY ?? '';
   const authDomain = process.env.FIREBASE_AUTH_DOMAIN ?? '';
@@ -74,22 +81,28 @@ adminLoginRoute.get('/login', (c) => {
 <body>
   <h1>ITR Client HQ</h1>
   <p>Sign in with your <strong>@intensivetherapyretreat.com</strong> Google account.</p>
-  <button id="signin">Sign in with Google</button>
+  <button id="signin"
+    data-api-key="${escAttr(apiKey)}"
+    data-auth-domain="${escAttr(authDomain)}"
+    data-project-id="${escAttr(projectId)}"
+    data-return-to="${escAttr(returnTo)}">Sign in with Google</button>
   <p id="status" class="err"></p>
   ${errBlock}
   <p class="meta">Sessions last 5 days. After that you'll be asked to sign in again.</p>
   <script>
-    const config = {
-      apiKey: ${JSON.stringify(apiKey)},
-      authDomain: ${JSON.stringify(authDomain)},
-      projectId: ${JSON.stringify(projectId)},
-    };
-    firebase.initializeApp(config);
+    // Read config from data-attributes (M9 fix #6) — avoids </script>
+    // injection that JSON.stringify does NOT escape.
+    const btn = document.getElementById('signin');
+    firebase.initializeApp({
+      apiKey: btn.dataset.apiKey,
+      authDomain: btn.dataset.authDomain,
+      projectId: btn.dataset.projectId,
+    });
     const provider = new firebase.auth.GoogleAuthProvider();
     provider.setCustomParameters({ hd: 'intensivetherapyretreat.com' });
-    const returnTo = ${JSON.stringify(returnTo)};
+    const returnTo = btn.dataset.returnTo;
     const status = document.getElementById('status');
-    document.getElementById('signin').addEventListener('click', async () => {
+    btn.addEventListener('click', async () => {
       status.textContent = 'Signing in…';
       try {
         const result = await firebase.auth().signInWithPopup(provider);

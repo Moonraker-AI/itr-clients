@@ -15,6 +15,11 @@ import { and, eq } from 'drizzle-orm';
 import { getDb } from '../../db/client.js';
 import { auditEvents, clients, retreats } from '../../db/schema.js';
 import { therapistCanAccess } from '../../lib/auth.js';
+import {
+  csrfInputHtml,
+  ensureCsrfToken,
+  verifyCsrfToken,
+} from '../../lib/csrf.js';
 import { log } from '../../lib/phi-redactor.js';
 import { transitions } from '../../lib/state-machine.js';
 
@@ -52,6 +57,7 @@ adminConfirmDatesRoute.get('/:id/confirm-dates', async (c) => {
     .limit(1);
 
   const error = c.req.query('error');
+  const csrfHtml = csrfInputHtml(ensureCsrfToken(c));
 
   return c.html(renderForm({
     retreatId: row.retreatId,
@@ -60,6 +66,7 @@ adminConfirmDatesRoute.get('/:id/confirm-dates', async (c) => {
     plannedHalfDays: row.plannedHalfDays,
     clientName: `${row.clientFirstName} ${row.clientLastName}`,
     depositPaid: Boolean(paid),
+    csrfHtml,
     error: error ?? null,
   }));
 });
@@ -75,6 +82,9 @@ adminConfirmDatesRoute.post('/:id/confirm-dates', async (c) => {
   if (!therapistCanAccess(c.get('user'), owner.therapistId)) return c.notFound();
 
   const form = await c.req.formData();
+  if (!verifyCsrfToken(c, String(form.get('_csrf') ?? ''))) {
+    return c.json({ error: 'csrf_mismatch' }, 403);
+  }
   const startDate = String(form.get('start_date') ?? '').trim();
   const endDate = String(form.get('end_date') ?? '').trim();
 
@@ -109,6 +119,7 @@ interface FormArgs {
   clientName: string;
   depositPaid: boolean;
   error: string | null;
+  csrfHtml: string;
 }
 
 function renderForm(args: FormArgs): string {
@@ -147,6 +158,7 @@ function renderForm(args: FormArgs): string {
   ${banner}
   ${errBlock}
   <form method="post">
+    ${args.csrfHtml}
     <label><span>Start date</span><input type="date" name="start_date" required></label>
     <label><span>End date</span><input type="date" name="end_date" required></label>
     <button type="submit">Confirm + send calendar invite</button>

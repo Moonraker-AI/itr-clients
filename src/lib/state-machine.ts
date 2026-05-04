@@ -19,6 +19,8 @@
  * are wired. Stripe + scheduling transitions land in M3+ (still throw).
  */
 
+import { randomUUID } from 'node:crypto';
+
 import { and, eq, sql } from 'drizzle-orm';
 
 import { getDb } from '../db/client.js';
@@ -371,6 +373,10 @@ export const transitions = {
         })
         .onConflictDoUpdate({
           target: payments.stripePaymentIntentId,
+          // Match the partial unique index on payments_stripe_payment_intent_idx
+          // which is `WHERE kind != 'refund'`. Refund rows reuse the original
+          // PI legitimately and must NOT collide with the deposit/final upsert.
+          targetWhere: sql`${payments.kind} <> 'refund'`,
           set: {
             status: 'succeeded',
             stripeChargeId: args.stripeChargeId ?? null,
@@ -747,6 +753,10 @@ export const transitions = {
         })
         .onConflictDoUpdate({
           target: payments.stripePaymentIntentId,
+          // Match the partial unique index on payments_stripe_payment_intent_idx
+          // which is `WHERE kind != 'refund'`. Refund rows reuse the original
+          // PI legitimately and must NOT collide with the deposit/final upsert.
+          targetWhere: sql`${payments.kind} <> 'refund'`,
           set: {
             status: 'succeeded',
             stripeChargeId: args.stripeChargeId ?? null,
@@ -844,32 +854,41 @@ export const transitions = {
       const alreadyFailed = r.state === 'final_charge_failed';
       if (!alreadyFailed) assertTransition(r.state, 'final_charge_failed');
 
-      if (args.stripePaymentIntentId) {
-        await tx
-          .insert(payments)
-          .values({
-            retreatId: args.retreatId,
-            kind: 'final',
-            stripePaymentIntentId: args.stripePaymentIntentId,
-            amountCents: args.amountCents ?? 0,
+      // ALWAYS write a payments row so the retry cron's attempt-count
+      // derivation sees this failure (M9 fix #15). When the failure happened
+      // before Stripe minted a PI (e.g. no_saved_payment_method short-circuit),
+      // synthesize a sentinel PI so the unique index is satisfied without
+      // conflicting with future real PIs. The sentinel is tagged so audit
+      // queries can filter it out.
+      const piId =
+        args.stripePaymentIntentId ??
+        `noPI:${args.retreatId}:${randomUUID()}`;
+      await tx
+        .insert(payments)
+        .values({
+          retreatId: args.retreatId,
+          kind: 'final',
+          stripePaymentIntentId: piId,
+          amountCents: args.amountCents ?? 0,
+          status: 'failed',
+          failureCode: args.failureCode,
+          failureMessage: args.failureMessage,
+          attemptCount: 1,
+          lastAttemptedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: payments.stripePaymentIntentId,
+          // Match the partial unique index `WHERE kind != 'refund'`.
+          targetWhere: sql`${payments.kind} <> 'refund'`,
+          set: {
             status: 'failed',
             failureCode: args.failureCode,
             failureMessage: args.failureMessage,
-            attemptCount: 1,
+            updatedAt: new Date(),
+            attemptCount: sql`${payments.attemptCount} + 1`,
             lastAttemptedAt: new Date(),
-          })
-          .onConflictDoUpdate({
-            target: payments.stripePaymentIntentId,
-            set: {
-              status: 'failed',
-              failureCode: args.failureCode,
-              failureMessage: args.failureMessage,
-              updatedAt: new Date(),
-              attemptCount: sql`${payments.attemptCount} + 1`,
-              lastAttemptedAt: new Date(),
-            },
-          });
-      }
+          },
+        });
 
       if (alreadyFailed) return;
 
@@ -939,9 +958,56 @@ export type RetryOutcome =
   | 'failed_exhausted'
   | 'skipped_no_pm'
   | 'skipped_zero_balance'
-  | 'skipped_max_attempts';
+  | 'skipped_max_attempts'
+  | 'skipped_concurrent';
 
 export async function retryFailedCharge(args: {
+  retreatId: string;
+  actor: Actor;
+}): Promise<{ outcome: RetryOutcome; attempt: number }> {
+  const { db, pool } = await getDb();
+
+  // Advisory lock keyed on the retreat id (M9 fix #2). Prevents two
+  // concurrent retry passes (cron + manual fire, two cron retries) from
+  // racing on the same retreat. We hold the lock across the entire
+  // function on a dedicated pool client; the lock auto-releases when
+  // the client is released, even on uncaught throw.
+  const client = await pool.connect();
+  // 32-bit signed key derived from the retreat id; collision space is
+  // small but a random false-positive only delays one retry by a day.
+  const key = retreatIdToLockKey(args.retreatId);
+  const acquired = await client.query<{ pg_try_advisory_lock: boolean }>(
+    'SELECT pg_try_advisory_lock($1) AS pg_try_advisory_lock',
+    [key],
+  );
+  if (!acquired.rows[0]?.pg_try_advisory_lock) {
+    client.release();
+    log.info('retry_failed_charge_concurrent_skipped', {
+      retreatId: args.retreatId,
+    });
+    return { outcome: 'skipped_concurrent', attempt: 0 };
+  }
+  try {
+    return await runRetry(args);
+  } finally {
+    await client
+      .query('SELECT pg_advisory_unlock($1)', [key])
+      .catch(() => undefined);
+    client.release();
+  }
+}
+
+function retreatIdToLockKey(retreatId: string): number {
+  // Stable 32-bit signed hash. Same approach as Postgres `hashtext()`
+  // would be fine, but cheap to compute client-side.
+  let h = 0;
+  for (let i = 0; i < retreatId.length; i++) {
+    h = (h * 31 + retreatId.charCodeAt(i)) | 0;
+  }
+  return h;
+}
+
+async function runRetry(args: {
   retreatId: string;
   actor: Actor;
 }): Promise<{ outcome: RetryOutcome; attempt: number }> {
@@ -957,7 +1023,9 @@ export async function retryFailedCharge(args: {
     throw new Error('retryFailedCharge: total_actual_cents is null');
   }
 
-  // Count prior final attempts (success or failure) to derive next attempt #.
+  // Read prior final-kind payments. Attempt cap counts only non-succeeded
+  // rows (M9 fix #16) — a succeeded row means the charge already cleared,
+  // so there's no reason to count it against the 3-attempt budget.
   const priorRows = await db
     .select({
       id: payments.id,
@@ -966,7 +1034,9 @@ export async function retryFailedCharge(args: {
     })
     .from(payments)
     .where(and(eq(payments.retreatId, args.retreatId), eq(payments.kind, 'final')));
-  const priorAttempts = priorRows.length;
+  const priorFailedAttempts = priorRows.filter(
+    (p) => p.status !== 'succeeded',
+  ).length;
   const succeededFinalCents = priorRows
     .filter((p) => p.status === 'succeeded')
     .reduce((acc, p) => acc + p.amountCents, 0);
@@ -983,10 +1053,10 @@ export async function retryFailedCharge(args: {
       )
   ).reduce((acc, p) => acc + p.amountCents, 0);
 
-  if (priorAttempts >= 3) {
-    return { outcome: 'skipped_max_attempts', attempt: priorAttempts };
+  if (priorFailedAttempts >= 3) {
+    return { outcome: 'skipped_max_attempts', attempt: priorFailedAttempts };
   }
-  const attempt = priorAttempts + 1;
+  const attempt = priorFailedAttempts + 1;
 
   const balance =
     r.totalActualCents - succeededDepositCents - succeededFinalCents;

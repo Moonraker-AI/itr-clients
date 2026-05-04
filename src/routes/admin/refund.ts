@@ -21,6 +21,11 @@ import {
   retreats,
 } from '../../db/schema.js';
 import { therapistCanAccess } from '../../lib/auth.js';
+import {
+  csrfInputHtml,
+  ensureCsrfToken,
+  verifyCsrfToken,
+} from '../../lib/csrf.js';
 import { log } from '../../lib/phi-redactor.js';
 import { formatCents } from '../../lib/pricing.js';
 import { refundPayment } from '../../lib/stripe.js';
@@ -58,6 +63,7 @@ adminRefundRoute.get('/:id/refund', async (c) => {
     .where(and(eq(payments.retreatId, id), eq(payments.status, 'succeeded')));
 
   const error = c.req.query('error');
+  const csrfHtml = csrfInputHtml(ensureCsrfToken(c));
 
   return c.html(
     renderForm({
@@ -66,6 +72,7 @@ adminRefundRoute.get('/:id/refund', async (c) => {
       clientName: `${r.clientFirstName} ${r.clientLastName}`,
       refundable,
       error: error ?? null,
+      csrfHtml,
     }),
   );
 });
@@ -73,6 +80,9 @@ adminRefundRoute.get('/:id/refund', async (c) => {
 adminRefundRoute.post('/:id/refund', async (c) => {
   const id = c.req.param('id');
   const form = await c.req.formData();
+  if (!verifyCsrfToken(c, String(form.get('_csrf') ?? ''))) {
+    return c.json({ error: 'csrf_mismatch' }, 403);
+  }
   const paymentId = String(form.get('payment_id') ?? '').trim();
   const amountDollarsRaw = String(form.get('amount_dollars') ?? '').trim();
   const reasonNote = String(form.get('reason_note') ?? '').trim();
@@ -210,6 +220,7 @@ interface FormArgs {
     createdAt: Date;
   }>;
   error: string | null;
+  csrfHtml: string;
 }
 
 function renderForm(args: FormArgs): string {
@@ -248,6 +259,7 @@ function renderForm(args: FormArgs): string {
   <p class="meta">Refunding does NOT change retreat state. It writes a refund row to the payments table and a 'refunded' audit event. Stripe processes the refund against the original PaymentIntent.</p>
   ${errBlock}
   <form method="post">
+    ${args.csrfHtml}
     <label>
       <span>Target payment</span>
       <select name="payment_id" required>

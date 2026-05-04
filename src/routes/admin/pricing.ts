@@ -15,6 +15,11 @@ import { eq, asc } from 'drizzle-orm';
 
 import { getDb } from '../../db/client.js';
 import { pricingConfig, therapists, locations } from '../../db/schema.js';
+import {
+  csrfInputHtml,
+  ensureCsrfToken,
+  verifyCsrfToken,
+} from '../../lib/csrf.js';
 import { formatCents } from '../../lib/pricing.js';
 import { log } from '../../lib/phi-redactor.js';
 
@@ -43,12 +48,18 @@ adminPricingRoute.get('/', async (c) => {
     .where(eq(pricingConfig.id, 'singleton'));
 
   const ach = config ? Number(config.achDiscountPct) : 0.03;
+  const csrfHtml = csrfInputHtml(ensureCsrfToken(c));
 
-  return c.html(renderPricingPage({ therapists: rows, achDiscountPct: ach }));
+  return c.html(
+    renderPricingPage({ therapists: rows, achDiscountPct: ach, csrfHtml }),
+  );
 });
 
 adminPricingRoute.post('/ach-discount', async (c) => {
   const form = await c.req.formData();
+  if (!verifyCsrfToken(c, String(form.get('_csrf') ?? ''))) {
+    return c.json({ error: 'csrf_mismatch' }, 403);
+  }
   const raw = form.get('ach_discount_pct');
   const pct = Number(raw);
   if (!Number.isFinite(pct) || pct < 0 || pct >= 1) {
@@ -81,6 +92,7 @@ type Row = {
 function renderPricingPage(args: {
   therapists: Row[];
   achDiscountPct: number;
+  csrfHtml: string;
 }): string {
   const rows = args.therapists
     .map(
@@ -131,6 +143,7 @@ function renderPricingPage(args: {
 
   <h2>ACH discount</h2>
   <form method="post" action="/admin/pricing/ach-discount">
+    ${args.csrfHtml}
     <label for="ach_discount_pct">ach_discount_pct (0–1, e.g. 0.030 = 3.0%)</label>
     <input id="ach_discount_pct" name="ach_discount_pct" type="number"
       step="0.0001" min="0" max="0.5" value="${escape(
