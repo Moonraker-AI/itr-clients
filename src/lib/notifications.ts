@@ -90,6 +90,13 @@ interface Composed {
 
 function compose(args: NotifyArgs): Composed {
   const link = args.event === 'consent_package_sent' ? args.clientPortalUrl : args.adminUrl;
+  // Append retreat-id tail to internal subjects so an admin scanning their
+  // inbox can correlate "this alert is about which retreat?" without
+  // opening the body. retreatId is an opaque uuid — NOT PHI — so this
+  // doesn't violate the PHI-clean-body principle. Skipped for the
+  // client-facing consent_package_sent event so the client doesn't see
+  // an internal id appended to their personal email.
+  const tag = `[ret #${args.retreatId.slice(0, 8)}]`;
   switch (args.event) {
     case 'consent_package_sent':
       return {
@@ -108,63 +115,63 @@ function compose(args: NotifyArgs): Composed {
       };
     case 'consents_signed':
       return {
-        subject: 'Consents signed',
+        subject: `Consents signed ${tag}`,
         textBody: `All required consents have been signed. ${link}\n`,
         htmlBody: `<p>All required consents have been signed.</p><p><a href="${esc(link)}">${esc(link)}</a></p>`,
         templateName: 'consents_signed',
       };
     case 'deposit_paid':
       return {
-        subject: 'Deposit paid — please confirm dates',
+        subject: `Deposit paid — please confirm dates ${tag}`,
         textBody: `Deposit paid. Please confirm dates: ${link}\n`,
         htmlBody: `<p>Deposit paid. Please confirm dates.</p><p><a href="${esc(link)}">${esc(link)}</a></p>`,
         templateName: 'deposit_paid',
       };
     case 'dates_confirmed':
       return {
-        subject: 'Retreat dates confirmed',
+        subject: `Retreat dates confirmed ${tag}`,
         textBody: `Retreat dates have been confirmed. ${link}\n`,
         htmlBody: `<p>Retreat dates have been confirmed.</p><p><a href="${esc(link)}">${esc(link)}</a></p>`,
         templateName: 'dates_confirmed',
       };
     case 'in_progress':
       return {
-        subject: 'Retreat in progress',
+        subject: `Retreat in progress ${tag}`,
         textBody: `Retreat marked in progress. ${link}\n`,
         htmlBody: `<p>Retreat marked in progress.</p><p><a href="${esc(link)}">${esc(link)}</a></p>`,
         templateName: 'in_progress',
       };
     case 'completion_submitted':
       return {
-        subject: 'Retreat completion submitted',
+        subject: `Retreat completion submitted ${tag}`,
         textBody: `Therapist submitted completion form. ${link}\n`,
         htmlBody: `<p>Therapist submitted completion form.</p><p><a href="${esc(link)}">${esc(link)}</a></p>`,
         templateName: 'completion_submitted',
       };
     case 'final_charged':
       return {
-        subject: 'Final balance charged',
+        subject: `Final balance charged ${tag}`,
         textBody: `Final balance charged successfully. ${link}\n`,
         htmlBody: `<p>Final balance charged successfully.</p><p><a href="${esc(link)}">${esc(link)}</a></p>`,
         templateName: 'final_charged',
       };
     case 'final_charge_failed':
       return {
-        subject: 'Action needed: final charge failed',
+        subject: `Action needed: final charge failed ${tag}`,
         textBody: `Final charge failed for a retreat. Action needed: ${link}\n`,
         htmlBody: `<p>Final charge failed for a retreat. Action needed.</p><p><a href="${esc(link)}">${esc(link)}</a></p>`,
         templateName: 'final_charge_failed',
       };
     case 'final_charge_retry_exhausted':
       return {
-        subject: 'Action needed: final charge retry attempts exhausted',
+        subject: `Action needed: final charge retry attempts exhausted ${tag}`,
         textBody: `All retry attempts for the final charge have failed (3/3). Manual recovery required: ${link}\n`,
         htmlBody: `<p>All retry attempts for the final charge have failed (3/3). Manual recovery required.</p><p><a href="${esc(link)}">${esc(link)}</a></p>`,
         templateName: 'final_charge_retry_exhausted',
       };
     case 'cancelled':
       return {
-        subject: 'Retreat cancelled',
+        subject: `Retreat cancelled ${tag}`,
         textBody: `Retreat cancelled. ${link}\n`,
         htmlBody: `<p>Retreat cancelled.</p><p><a href="${esc(link)}">${esc(link)}</a></p>`,
         templateName: 'cancelled',
