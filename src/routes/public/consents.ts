@@ -21,6 +21,7 @@ import { asc, eq } from 'drizzle-orm';
 
 import { getDb } from '../../db/client.js';
 import {
+  auditEvents,
   clients,
   consentSignatures,
   consentTemplates,
@@ -247,14 +248,29 @@ publicConsentsRoute.post('/:token/consents', bodyLimit({
       .set({ pdfStoragePath: upload.storagePath })
       .where(eq(consentSignatures.id, sig.id));
   } catch (err) {
-    // Non-fatal: signature is recorded; render/upload can be retried later
-    // by an admin tool (M7). Surface in logs but do not 500 — the client
-    // already signed.
+    // Non-fatal: signature is recorded; render/upload can be retried
+    // later. Surface in logs AND in the audit trail (M9 fix #27) so the
+    // dashboard surfaces the bad row rather than letting it sit silent.
     log.error('consent_pdf_upload_failed', {
       retreatId: ctx.retreatId,
       signatureId: sig.id,
       error: (err as Error).message,
     });
+    await db
+      .insert(auditEvents)
+      .values({
+        retreatId: ctx.retreatId,
+        actorType: 'system',
+        actorId: null,
+        eventType: 'pdf_upload_failed',
+        payload: {
+          signature_id: sig.id,
+          template_name: next.name,
+          template_version: next.version,
+          error: (err as Error).message.slice(0, 200),
+        },
+      })
+      .catch(() => undefined);
   }
 
   // If this was the last required signature, transition.
