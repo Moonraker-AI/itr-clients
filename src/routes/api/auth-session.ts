@@ -42,6 +42,26 @@ function rateLimitedIp(ip: string): boolean {
   }
   return bucket.length > RATE_MAX;
 }
+/**
+ * Best-effort client IP for the rate-limit bucket key.
+ *
+ * Audit #40 (XFF trust chain): we read the leftmost X-Forwarded-For value,
+ * which is technically client-supplied and spoofable. Cloud Run prepends
+ * its own hop(s), so the real client IP is at `len - N` where N is the
+ * number of trusted proxies. Without a Global LB in front of this service,
+ * N is typically 1 (the Cloud Run frontend), making the real client IP at
+ * index `len - 1`.
+ *
+ * We accept the spoof risk here because:
+ *   1. The bucket cap (RATE_MAX / 60s) is per-IP — a determined attacker
+ *      who rotates spoofed XFF still hits the global memory cap on ipHits.
+ *   2. This endpoint only mints a session for a verified Firebase ID
+ *      token; rate-limiting is a defense-in-depth knob, not the primary
+ *      gate.
+ *
+ * Revisit if/when we put a Cloud LB in front (then prefer `len - 1` minus
+ * the LB hop) or move to a real distributed rate-limiter (Cloud Memorystore).
+ */
 function clientIp(c: import('hono').Context): string {
   const xff = c.req.header('x-forwarded-for') ?? '';
   return xff.split(',')[0]?.trim() || 'unknown';
