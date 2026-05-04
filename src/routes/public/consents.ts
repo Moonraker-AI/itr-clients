@@ -16,6 +16,7 @@
  */
 
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { asc, eq } from 'drizzle-orm';
 
 import { getDb } from '../../db/client.js';
@@ -146,7 +147,14 @@ publicConsentsRoute.get('/:token/consents', async (c) => {
   return c.html(renderSignPage({ ctx, template: next, token }));
 });
 
-publicConsentsRoute.post('/:token/consents', async (c) => {
+// 1 MB cap on the consent submission (M9 fix #10). The signature
+// data URL is the heaviest field (~50–250 KB for a typical canvas
+// signature); 1 MB leaves headroom for free-text fields without
+// letting an attacker exhaust the 512 MiB Cloud Run instance.
+publicConsentsRoute.post('/:token/consents', bodyLimit({
+  maxSize: 1_048_576,
+  onError: (c) => c.json({ error: 'payload_too_large' }, 413),
+}), async (c) => {
   const token = c.req.param('token');
   const ctx = await loadByToken(token);
   if (!ctx) return c.notFound();

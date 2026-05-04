@@ -1099,13 +1099,30 @@ async function runRetry(args: {
   });
 
   if (charge.status === 'succeeded') {
-    await transitions.markCompleted({
+    log.info('retry_final_charge_db_write_starting', {
       retreatId: args.retreatId,
-      actor: args.actor,
-      stripePaymentIntentId: charge.paymentIntentId,
-      ...(charge.chargeId ? { stripeChargeId: charge.chargeId } : {}),
+      paymentIntentId: charge.paymentIntentId,
       amountCents: balance,
+      attempt,
     });
+    try {
+      await transitions.markCompleted({
+        retreatId: args.retreatId,
+        actor: args.actor,
+        stripePaymentIntentId: charge.paymentIntentId,
+        ...(charge.chargeId ? { stripeChargeId: charge.chargeId } : {}),
+        amountCents: balance,
+      });
+    } catch (err) {
+      log.error('CRITICAL_final_charge_succeeded_but_db_write_failed', {
+        retreatId: args.retreatId,
+        paymentIntentId: charge.paymentIntentId,
+        amountCents: balance,
+        attempt,
+        error: (err as Error).message,
+      });
+      throw err;
+    }
     return { outcome: 'succeeded', attempt };
   }
 

@@ -192,13 +192,32 @@ adminCompleteRoute.post('/:id/complete', async (c) => {
   });
 
   if (charge.status === 'succeeded') {
-    await transitions.markCompleted({
+    // Critical-log mitigation for the "Stripe charged, DB write failed"
+    // window (M9 fix #3, partial). The Stripe webhook
+    // payment_intent.succeeded provides a redundant ack path; this log
+    // line gives operators a grep-able marker if both paths fail.
+    log.info('final_charge_db_write_starting', {
       retreatId: id,
-      actor: { kind: 'system' },
-      stripePaymentIntentId: charge.paymentIntentId,
-      ...(charge.chargeId ? { stripeChargeId: charge.chargeId } : {}),
+      paymentIntentId: charge.paymentIntentId,
       amountCents: balance,
     });
+    try {
+      await transitions.markCompleted({
+        retreatId: id,
+        actor: { kind: 'system' },
+        stripePaymentIntentId: charge.paymentIntentId,
+        ...(charge.chargeId ? { stripeChargeId: charge.chargeId } : {}),
+        amountCents: balance,
+      });
+    } catch (err) {
+      log.error('CRITICAL_final_charge_succeeded_but_db_write_failed', {
+        retreatId: id,
+        paymentIntentId: charge.paymentIntentId,
+        amountCents: balance,
+        error: (err as Error).message,
+      });
+      throw err;
+    }
   } else {
     await transitions.markFinalChargeFailed({
       retreatId: id,
