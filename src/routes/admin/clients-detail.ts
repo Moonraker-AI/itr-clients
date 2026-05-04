@@ -92,12 +92,13 @@ adminClientsDetailRoute.get('/:id', async (c) => {
     .select({
       eventType: auditEvents.eventType,
       actorType: auditEvents.actorType,
+      payload: auditEvents.payload,
       createdAt: auditEvents.createdAt,
     })
     .from(auditEvents)
     .where(eq(auditEvents.retreatId, id))
     .orderBy(desc(auditEvents.createdAt))
-    .limit(20);
+    .limit(50);
 
   const emails = await db
     .select({
@@ -175,10 +176,10 @@ adminClientsDetailRoute.get('/:id', async (c) => {
   })();
 
   const auditList = audits
-    .map(
-      (a) =>
-        `<tr><td>${escHtml(a.createdAt.toISOString())}</td><td>${escHtml(a.eventType)}</td><td>${escHtml(a.actorType)}</td></tr>`,
-    )
+    .map((a) => {
+      const payloadJson = a.payload ? JSON.stringify(a.payload) : '';
+      return `<tr><td>${escHtml(a.createdAt.toISOString())}</td><td><code>${escHtml(a.eventType)}</code></td><td>${escHtml(a.actorType)}</td><td><code class="payload">${escHtml(payloadJson)}</code></td></tr>`;
+    })
     .join('');
 
   const emailList = emails
@@ -202,10 +203,14 @@ adminClientsDetailRoute.get('/:id', async (c) => {
     th, td { padding: 0.4rem 0.6rem; border-bottom: 1px solid #ddd; text-align: left; vertical-align: top; }
     th { background: #f6f6f6; font-weight: 600; }
     code { background: #f0f0f0; padding: 0 0.25rem; font: 12px ui-monospace, monospace; }
+    code.payload { display: inline-block; max-width: 460px; white-space: pre-wrap; word-break: break-all; }
     a.cta { display: inline-block; padding: 0.4rem 0.8rem; background: #1c4f7c; color: white; text-decoration: none; border-radius: 4px; }
+    .topnav { color: #666; margin-bottom: 1rem; }
+    .topnav a { color: #1c4f7c; text-decoration: none; margin-right: 0.6rem; }
   </style>
 </head>
 <body>
+  <p class="topnav"><a href="/admin">← Dashboard</a> · <a href="/admin/clients/${escAttr(row.retreatId)}/refund">Refund</a></p>
   <h1>Retreat <code>${escHtml(row.retreatId)}</code></h1>
   <p><strong>State:</strong> <code>${escHtml(row.state)}</code></p>
 
@@ -239,7 +244,7 @@ adminClientsDetailRoute.get('/:id', async (c) => {
   <ul>${consentsList}</ul>
 
   <h2>Audit log</h2>
-  <table><thead><tr><th>When</th><th>Event</th><th>Actor</th></tr></thead><tbody>${auditList}</tbody></table>
+  <table><thead><tr><th>When</th><th>Event</th><th>Actor</th><th>Payload</th></tr></thead><tbody>${auditList}</tbody></table>
 
   <h2>Email log</h2>
   <table><thead><tr><th>When</th><th>Template</th><th>Recipient</th><th>Gmail message id</th></tr></thead><tbody>${emailList}</tbody></table>

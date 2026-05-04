@@ -8,7 +8,9 @@ import { adminClientsDetailRoute } from './routes/admin/clients-detail.js';
 import { adminClientsNewRoute } from './routes/admin/clients-new.js';
 import { adminCompleteRoute } from './routes/admin/complete.js';
 import { adminConfirmDatesRoute } from './routes/admin/confirm-dates.js';
+import { adminDashboardRoute } from './routes/admin/dashboard.js';
 import { adminPricingRoute } from './routes/admin/pricing.js';
+import { adminRefundRoute } from './routes/admin/refund.js';
 import { publicCheckoutRoute } from './routes/public/checkout.js';
 import { publicConsentsRoute } from './routes/public/consents.js';
 import { publicPaymentRoute } from './routes/public/payment.js';
@@ -40,12 +42,16 @@ app.route('/api/webhooks/stripe', stripeWebhookRoute);
 if (!webhookOnly) {
   app.route('/admin/pricing', adminPricingRoute);
   app.route('/admin/clients/new', adminClientsNewRoute);
-  // Confirm-dates + complete routes (`/admin/clients/:id/confirm-dates`,
-  // `/admin/clients/:id/complete`) must mount BEFORE the catch-all detail
-  // route or the `/:id` matcher swallows them.
+  // Confirm-dates + complete + refund routes (`/admin/clients/:id/<action>`)
+  // must mount BEFORE the catch-all detail route or the `/:id` matcher
+  // swallows them.
   app.route('/admin/clients', adminConfirmDatesRoute);
   app.route('/admin/clients', adminCompleteRoute);
+  app.route('/admin/clients', adminRefundRoute);
   app.route('/admin/clients', adminClientsDetailRoute);
+  // Dashboard mounted last so it doesn't shadow the more specific
+  // /admin/* routes above.
+  app.route('/admin', adminDashboardRoute);
   app.route('/c', publicConsentsRoute);
   app.route('/c', publicCheckoutRoute);
   app.route('/c', publicPaymentRoute);
