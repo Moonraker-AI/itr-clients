@@ -161,6 +161,14 @@ export const clients = pgTable('clients', {
  * src/lib/state-machine.ts; nothing else mutates `state`. Pricing is
  * snapshotted at creation (DESIGN §4) — never join to live pricing_config
  * when computing a retreat's totals.
+ *
+ * `updated_at` semantics (audit #41): bumped only on retreat-row mutations
+ * (state transitions, day-count submissions, schedule edits). It is NOT
+ * the freshest timestamp for the retreat as a whole — `payments.updated_at`
+ * for the same retreat advances independently on every Stripe attempt
+ * (deposit/final/refund retries). Treat them as two parallel timelines:
+ * `retreats.updated_at` for state mutations, `payments.updated_at` for
+ * money mutations. Reports needing "last activity" should MAX over both.
  */
 export const retreats = pgTable(
   'retreats',
@@ -318,6 +326,15 @@ export const auditEvents = pgTable('audit_events', {
     .defaultNow(),
 });
 
+/**
+ * email_log — outbound notification audit trail.
+ *
+ * PHI flag (audit #29): `recipient` is PHI when `retreat_id` is non-null,
+ * because the join exposes which client / therapist a given email address
+ * belongs to. Export pipelines must redact `recipient` (or hash it) when
+ * leaving the production project. Rows with `retreat_id IS NULL` (system
+ * notifications to team@itr) are non-PHI and may be exported as-is.
+ */
 export const emailLog = pgTable('email_log', {
   id: uuid('id').primaryKey().defaultRandom(),
   retreatId: uuid('retreat_id').references(() => retreats.id, {
@@ -379,6 +396,11 @@ export const stripeCustomers = pgTable('stripe_customers', {
  * Payment intents and refunds (DESIGN.md §9). One row per Stripe
  * PaymentIntent or Refund attempt. Idempotency on stripe_payment_intent_id
  * (unique) so duplicate webhooks don't double-write.
+ *
+ * `updated_at` semantics (audit #41): bumped on every status flip and on
+ * every retry — so it can advance well past `retreats.updated_at` for the
+ * same retreat (e.g. a retry cron run that doesn't transition the retreat).
+ * See the retreats comment block for the parallel-timelines rule.
  */
 export const payments = pgTable(
   'payments',

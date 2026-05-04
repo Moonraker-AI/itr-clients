@@ -194,6 +194,12 @@ publicConsentsRoute.post('/:token/consents', bodyLimit({
       templateId: next.templateId,
       signedName: signedName || ctx.clientFirstName,
       signedAt: new Date(),
+      // Audit #40 (XFF trust chain): leftmost XFF is client-supplied and
+      // spoofable. For e-sig evidence this is acceptable as one input
+      // among several (user-agent + evidenceBlob + signed_at + signedName)
+      // — no single field is solely load-bearing for repudiation defense.
+      // If a custom domain + Cloud LB is wired in front, switch to the
+      // rightmost-trusted hop or Hono's `getConnInfo` adapter.
       ipAddress:
         c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || null,
       userAgent: c.req.header('user-agent') || null,

@@ -161,6 +161,14 @@ adminCompleteRoute.post('/:id/complete', async (c) => {
     // No balance owed (deposit covered everything). Mark completed with
     // a synthetic zero-amount payments row keyed on a deterministic id so
     // the webhook dispatch path doesn't double-write.
+    //
+    // Audit #17: `final_zero_${id}` is collision-safe across re-completion
+    // because retreat ids are PKs (no two retreats share an id), and
+    // submitCompletion (state-machine.ts:663) refuses a second submission
+    // with different day counts — so the only way back into this branch
+    // is with identical args, which markCompleted's onConflictDoUpdate
+    // handles idempotently. Refund.ts:128 short-circuits this synthetic
+    // PI since there is no Stripe charge to reverse.
     await transitions.markCompleted({
       retreatId: id,
       actor: { kind: 'system' },
