@@ -73,6 +73,17 @@ gcloud run services add-iam-policy-binding "itr-client-hq" \
   --member="serviceAccount:${RUNTIME_SA}" \
   --role="roles/run.invoker" >/dev/null
 
+# M9 fix #23: when CRON_SHARED_SECRET is exported, additionally pass
+# X-Cron-Secret as a header on every Scheduler-fired POST. The Cloud
+# Run service refuses cron requests without it once the env is bound
+# in prod. The Scheduler API accepts repeated `--update-headers` flags
+# (one per header).
+HEADERS_FLAG=()
+if [[ -n "${CRON_SHARED_SECRET:-}" ]]; then
+  HEADERS_FLAG=(--update-headers="X-Cron-Secret=${CRON_SHARED_SECRET}")
+  echo "==> X-Cron-Secret header will be set on the job"
+fi
+
 # Create or update the job. Cloud Scheduler doesn't have a single
 # `create-or-update`; use describe→update / create accordingly.
 if gcloud scheduler jobs describe "${JOB_NAME}" \
@@ -87,7 +98,8 @@ if gcloud scheduler jobs describe "${JOB_NAME}" \
     --http-method=POST \
     --oidc-service-account-email="${RUNTIME_SA}" \
     --oidc-token-audience="${SERVICE_URL}" \
-    --attempt-deadline=120s
+    --attempt-deadline=120s \
+    "${HEADERS_FLAG[@]}"
 else
   echo "==> creating new job ${JOB_NAME}"
   gcloud scheduler jobs create http "${JOB_NAME}" \
@@ -100,7 +112,8 @@ else
     --oidc-service-account-email="${RUNTIME_SA}" \
     --oidc-token-audience="${SERVICE_URL}" \
     --attempt-deadline=120s \
-    --description="M4 cron: scheduled -> in_progress on scheduled_start_date"
+    --description="M4 cron: scheduled -> in_progress on scheduled_start_date" \
+    "${HEADERS_FLAG[@]}"
 fi
 
 echo
