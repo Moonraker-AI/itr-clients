@@ -23,6 +23,7 @@ import {
   retreats,
   therapists,
 } from '../../db/schema.js';
+import { therapistCanAccess } from '../../lib/auth.js';
 import { getTemplate } from '../../lib/consent-templates.js';
 import { formatCents } from '../../lib/pricing.js';
 
@@ -36,6 +37,7 @@ adminClientsDetailRoute.get('/:id', async (c) => {
     .select({
       retreatId: retreats.id,
       state: retreats.state,
+      therapistId: retreats.therapistId,
       clientToken: retreats.clientToken,
       plannedFullDays: retreats.plannedFullDays,
       plannedHalfDays: retreats.plannedHalfDays,
@@ -63,6 +65,7 @@ adminClientsDetailRoute.get('/:id', async (c) => {
     .where(eq(retreats.id, id));
 
   if (!row) return c.notFound();
+  if (!therapistCanAccess(c.get('user'), row.therapistId)) return c.notFound();
 
   const required = await db
     .select({

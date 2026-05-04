@@ -44,11 +44,17 @@ adminDashboardRoute.get('/', async (c) => {
     .where(eq(therapists.active, true))
     .orderBy(asc(therapists.fullName));
 
+  const user = c.get('user');
   const conditions = [];
   if (stateFilter && (RETREAT_STATES as readonly string[]).includes(stateFilter)) {
     conditions.push(eq(retreats.state, stateFilter as RetreatState));
   }
-  if (therapistFilter) {
+  // Therapist scoping (DESIGN §12 M8): non-admin therapists see only their
+  // own retreats. Admins (and the dev no-op synthetic user) can use the
+  // therapist filter freely.
+  if (user && user.role === 'therapist') {
+    conditions.push(eq(retreats.therapistId, user.therapistId));
+  } else if (therapistFilter) {
     conditions.push(eq(retreats.therapistId, therapistFilter));
   }
   const where = conditions.length > 0 ? and(...conditions) : undefined;

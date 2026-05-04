@@ -4,6 +4,7 @@ import { Hono } from 'hono';
 import { stripeWebhookRoute } from './routes/api/webhooks-stripe.js';
 import { cronStateTransitionsRoute } from './routes/api/cron-state-transitions.js';
 import { cronRetryFailedChargesRoute } from './routes/api/cron-retry-failed-charges.js';
+import { authSessionRoute } from './routes/api/auth-session.js';
 import { adminClientsDetailRoute } from './routes/admin/clients-detail.js';
 import { adminClientsNewRoute } from './routes/admin/clients-new.js';
 import { adminCompleteRoute } from './routes/admin/complete.js';
@@ -11,6 +12,8 @@ import { adminConfirmDatesRoute } from './routes/admin/confirm-dates.js';
 import { adminDashboardRoute } from './routes/admin/dashboard.js';
 import { adminPricingRoute } from './routes/admin/pricing.js';
 import { adminRefundRoute } from './routes/admin/refund.js';
+import { adminLoginRoute } from './routes/auth/login.js';
+import { requireAuth } from './lib/auth.js';
 import { publicCheckoutRoute } from './routes/public/checkout.js';
 import { publicConsentsRoute } from './routes/public/consents.js';
 import { publicPaymentRoute } from './routes/public/payment.js';
@@ -40,6 +43,14 @@ const webhookOnly = process.env.WEBHOOK_ONLY === '1';
 app.route('/api/webhooks/stripe', stripeWebhookRoute);
 
 if (!webhookOnly) {
+  // Auth wiring (DESIGN.md §12 M8). Login page + session API are
+  // unauthenticated by definition; everything else under /admin requires
+  // a valid session cookie when AUTH_ENABLED=1, else falls through to a
+  // synthetic admin user (dev / pre-rollout no-op).
+  app.route('/admin', adminLoginRoute);
+  app.route('/api/auth', authSessionRoute);
+  app.use('/admin/*', requireAuth);
+
   app.route('/admin/pricing', adminPricingRoute);
   app.route('/admin/clients/new', adminClientsNewRoute);
   // Confirm-dates + complete + refund routes (`/admin/clients/:id/<action>`)
