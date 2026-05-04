@@ -1,9 +1,17 @@
 name: Deploy
 
+# Triggers:
+#   push:branches=[main]   → full deploy to dev
+#   push:tags=[v*]         → full deploy to prod
+#   pull_request           → typecheck + build only (validate the PR
+#                            without touching GCP); satisfies the
+#                            branch-protection `deploy` required check.
 on:
   push:
     branches: [main]
     tags: ['v*']
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 # Don't pile up deploys on the same ref.
@@ -13,7 +21,7 @@ concurrency:
 
 permissions:
   contents: read
-  id-token: write  # required for WIF
+  id-token: write  # required for WIF (push events only)
 
 jobs:
   deploy:
@@ -22,7 +30,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Validate every event (PR + push). Catches type errors + build
+      # breaks before they reach Cloud Build, and gives PRs a fast
+      # required-check signal without GCP plumbing.
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      # Everything below is push-only. PRs never reach Cloud Build, never
+      # touch GCP, and don't need the WIF + service-account setup.
       - name: Pick environment
+        if: github.event_name != 'pull_request'
         id: env
         run: |
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
@@ -60,15 +89,18 @@ jobs:
           fi
 
       - name: Auth to GCP via WIF
+        if: github.event_name != 'pull_request'
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ steps.env.outputs.deployer_sa }}
 
       - name: Set up gcloud
+        if: github.event_name != 'pull_request'
         uses: google-github-actions/setup-gcloud@v2
 
       - name: Submit Cloud Build
+        if: github.event_name != 'pull_request'
         run: |
           gcloud builds submit \
             --project=${{ steps.env.outputs.project }} \
