@@ -1,13 +1,9 @@
 /**
  * /admin/pricing — read existing per-therapist rates + edit ach_discount_pct.
  *
- * Auth is deferred to M8 (DESIGN.md §12). For now the route is reachable by
- * anyone who has IAM access to the Cloud Run service URL — same blast radius
- * as the rest of the app. This is acceptable in dev; prod will not enable
- * /admin/* until auth lands.
- *
- * Render is plain HTML, no JS — keeps the dependency surface minimal until
- * we standardize on a templating choice in M2.
+ * Auth: gated behind the M8 requireAuth middleware. CSRF protected via
+ * the double-submit cookie + hidden input pattern (lib/csrf.ts). Plain
+ * server-rendered HTML.
  */
 
 import { Hono } from 'hono';
@@ -138,8 +134,9 @@ function renderPricingPage(args: {
     </tr></thead>
     <tbody>${rows}</tbody>
   </table>
-  <p>Edit individual rates is admin-only and lands with M7. For now, rates are
-  authoritatively set by the seed script (see DESIGN.md §4).</p>
+  <p>Per-therapist rates are authoritatively set by the seed script
+  (see DESIGN.md §4). Inline edit is intentionally not surfaced here —
+  rate changes go through a code review.</p>
 
   <h2>ACH discount</h2>
   <form method="post" action="/admin/pricing/ach-discount">

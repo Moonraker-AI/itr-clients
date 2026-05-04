@@ -6,9 +6,8 @@
  *       client_token, seeds `retreat_required_consents` for every active
  *       template version, and fires the `sendConsentPackage` transition.
  *
- * Auth is deferred to M8 (DESIGN.md §12). Until then this lives behind
- * Cloud Run IAM auth on the service URL — same blast radius as the rest
- * of the app.
+ * Auth: gated behind the M8 requireAuth middleware. CSRF protected via
+ * the double-submit cookie + hidden input pattern (lib/csrf.ts).
  */
 
 import { Hono } from 'hono';

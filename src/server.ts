@@ -6,6 +6,7 @@ import { stripeWebhookRoute } from './routes/api/webhooks-stripe.js';
 import { cronStateTransitionsRoute } from './routes/api/cron-state-transitions.js';
 import { cronRetryFailedChargesRoute } from './routes/api/cron-retry-failed-charges.js';
 import { authSessionRoute } from './routes/api/auth-session.js';
+import { adminCancelRoute } from './routes/admin/cancel.js';
 import { adminClientsDetailRoute } from './routes/admin/clients-detail.js';
 import { adminClientsNewRoute } from './routes/admin/clients-new.js';
 import { adminCompleteRoute } from './routes/admin/complete.js';
@@ -105,6 +106,7 @@ if (!webhookOnly) {
   app.route('/admin/clients', adminConfirmDatesRoute);
   app.route('/admin/clients', adminCompleteRoute);
   app.route('/admin/clients', adminRefundRoute);
+  app.route('/admin/clients', adminCancelRoute);
   app.route('/admin/clients', adminClientsDetailRoute);
   // Dashboard mounted last so it doesn't shadow the more specific
   // /admin/* routes above.
