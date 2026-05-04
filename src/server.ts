@@ -130,13 +130,14 @@ app.onError((err, c) => {
   return c.json({ error: 'internal_error' }, 500);
 });
 
-// Defense-in-depth (M9 fix #23): in prod the cron routes are IAM-gated
-// by Cloud Run, but a configuration drift would silently expose them;
+// Defense-in-depth (M9 fix #23): the cron routes are IAM-gated by
+// Cloud Run, but a configuration drift would silently expose them;
 // require the shared secret as a belt to the IAM suspenders. Skipped
 // for the webhook-only service since it doesn't host cron routes.
+// Skipped when LOCAL_DB_URL is set (local dev w/ proxy).
 if (
-  process.env.NODE_ENV === 'production' &&
   !webhookOnly &&
+  !process.env.LOCAL_DB_URL &&
   !process.env.CRON_SHARED_SECRET
 ) {
   log.error('startup_aborted_missing_cron_shared_secret', {});

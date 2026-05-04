@@ -97,7 +97,10 @@ steps:
       # and ",GMAIL_SERVICE_ACCOUNT_KEY=gmail-service-account:latest" in prod.
       # Stripe secrets are always bound; dev points at test-mode values, prod
       # at live-mode (different secret payloads per project).
-      - --set-secrets=DB_URL=db-url:latest,STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest$_GMAIL_SECRETS_PART
+      # CRON_SHARED_SECRET (M9 fix #23) gates the /api/cron/* routes; the
+      # main service refuses to start without it. Same secret value is
+      # passed to Cloud Scheduler jobs as the X-Cron-Secret header.
+      - --set-secrets=DB_URL=db-url:latest,STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest,CRON_SHARED_SECRET=cron-shared-secret:latest$_GMAIL_SECRETS_PART
       # Direct VPC egress so the Cloud SQL Node.js Connector can reach the
       # instance's private IP. private-ranges-only keeps public traffic on
       # Cloud Run's default egress (no NAT cost).
