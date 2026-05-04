@@ -15,7 +15,7 @@
  *     a cross-origin POST cannot read the form HTML to copy its token.
  */
 
-import { randomUUID } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { getCookie, setCookie } from 'hono/cookie';
 import type { Context } from 'hono';
 
@@ -40,13 +40,14 @@ export function ensureCsrfToken(c: Context): string {
 export function verifyCsrfToken(c: Context, formValue: string | null | undefined): boolean {
   const cookie = getCookie(c, COOKIE) ?? '';
   if (!cookie || !formValue) return false;
-  // constant-time-ish compare via length+char loop
-  if (cookie.length !== formValue.length) return false;
-  let mismatch = 0;
-  for (let i = 0; i < cookie.length; i++) {
-    mismatch |= cookie.charCodeAt(i) ^ formValue.charCodeAt(i);
-  }
-  return mismatch === 0;
+  // Constant-time compare via crypto.timingSafeEqual over equal-length
+  // buffers. The hand-rolled XOR loop the previous revision used was
+  // also constant-time but harder to audit at a glance; swap for the
+  // canonical primitive for consistency with lib/cron-auth.ts (M9 t-15).
+  const a = Buffer.from(cookie);
+  const b = Buffer.from(formValue);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
 }
 
 /** Hidden-input HTML for embedding in a form. */

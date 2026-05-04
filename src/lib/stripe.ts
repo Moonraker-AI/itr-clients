@@ -133,7 +133,10 @@ function getClient(): Stripe | null {
     // Pin the API version so a Stripe-side default change doesn't silently
     // alter response shapes mid-deploy. Bumped intentionally with the SDK.
     apiVersion: '2026-04-22.dahlia',
-    appInfo: { name: 'itr-client-hq', version: '0.8.0' },
+    // Keep `appInfo.version` in lockstep with `package.json` "version".
+    // Stripe surfaces this string in their dashboard's API request log so
+    // mismatched values make per-revision debugging harder than it needs.
+    appInfo: { name: 'itr-client-hq', version: '0.8.4' },
     timeout: 15_000,
     maxNetworkRetries: 2,
   });
