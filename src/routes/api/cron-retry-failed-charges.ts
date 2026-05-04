@@ -22,6 +22,7 @@ import { and, desc, eq } from 'drizzle-orm';
 
 import { getDb } from '../../db/client.js';
 import { payments, retreats } from '../../db/schema.js';
+import { verifyCronSecret } from '../../lib/cron-auth.js';
 import { log } from '../../lib/phi-redactor.js';
 import { retryFailedCharge } from '../../lib/state-machine.js';
 
@@ -31,13 +32,9 @@ const MS_24H = 24 * 60 * 60 * 1000;
 const MS_72H = 72 * 60 * 60 * 1000;
 
 cronRetryFailedChargesRoute.post('/retry-failed-charges', async (c) => {
-  const expected = process.env.CRON_SHARED_SECRET;
-  if (expected) {
-    const got = c.req.header('x-cron-secret');
-    if (got !== expected) {
-      log.warn('cron_retry_failed_charges_unauthorized', {});
-      return c.json({ error: 'unauthorized' }, 401);
-    }
+  if (!verifyCronSecret(c)) {
+    log.warn('cron_retry_failed_charges_unauthorized', {});
+    return c.json({ error: 'unauthorized' }, 401);
   }
 
   const { db } = await getDb();

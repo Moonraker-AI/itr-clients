@@ -37,19 +37,16 @@ import { and, eq, lte } from 'drizzle-orm';
 
 import { getDb } from '../../db/client.js';
 import { retreats } from '../../db/schema.js';
+import { verifyCronSecret } from '../../lib/cron-auth.js';
 import { log } from '../../lib/phi-redactor.js';
 import { transitions } from '../../lib/state-machine.js';
 
 export const cronStateTransitionsRoute = new Hono();
 
 cronStateTransitionsRoute.post('/state-transitions', async (c) => {
-  const expected = process.env.CRON_SHARED_SECRET;
-  if (expected) {
-    const got = c.req.header('x-cron-secret');
-    if (got !== expected) {
-      log.warn('cron_state_transitions_unauthorized', {});
-      return c.json({ error: 'unauthorized' }, 401);
-    }
+  if (!verifyCronSecret(c)) {
+    log.warn('cron_state_transitions_unauthorized', {});
+    return c.json({ error: 'unauthorized' }, 401);
   }
 
   // YYYY-MM-DD in America/New_York. The schedule fires at 06:05 ET so
