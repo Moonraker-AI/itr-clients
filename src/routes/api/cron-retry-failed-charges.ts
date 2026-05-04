@@ -81,6 +81,16 @@ cronRetryFailedChargesRoute.post('/retry-failed-charges', async (c) => {
       // Already exhausted; cron is a no-op for this retreat.
       continue;
     }
+    if (finalRows.length === 0) {
+      // M9 fix #18: a final_charge_failed retreat without ANY payments
+      // rows is anomalous — typically pre-#15 data where the failure
+      // path skipped the row insert. Log loud so operators surface it
+      // and don't let it sit silently forever.
+      log.error('CRITICAL_final_charge_failed_no_payments_row', {
+        retreatId: r.id,
+      });
+      continue;
+    }
     if (!latest?.lastAttemptedAt) {
       // No prior attempt timestamp → don't auto-retry; admin/UI path
       // will have created the first attempt.

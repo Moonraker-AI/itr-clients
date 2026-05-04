@@ -108,15 +108,25 @@ function actorToColumns(a: Actor): { actorType: 'therapist' | 'client' | 'system
 }
 
 /**
- * Public host for token-bearing client URLs. Cloud Run sets `K_SERVICE` and
- * the workflow injects `PUBLIC_BASE_URL` once a custom domain is wired up;
- * fall back to the *.run.app origin while we're still on the default URL.
+ * Public host for token-bearing client URLs.
+ *
+ * Production: PUBLIC_BASE_URL must be bound. Without it, every notify
+ * email links to the dev *.run.app origin even from prod — bad for
+ * client-facing URLs (M9 fix #45).
+ *
+ * Dev / non-prod: falls back to the dev *.run.app origin.
  */
 function publicBaseUrl(): string {
-  return (
-    process.env.PUBLIC_BASE_URL ??
-    'https://itr-client-hq-buejbopu5q-uc.a.run.app'
-  );
+  const url = process.env.PUBLIC_BASE_URL;
+  if (url) return url;
+  if (process.env.AUTH_ENABLED === '1') {
+    // AUTH_ENABLED=1 is the prod tripwire — if we're enforcing auth,
+    // we should also be on a real domain.
+    throw new Error(
+      'PUBLIC_BASE_URL is required when AUTH_ENABLED=1',
+    );
+  }
+  return 'https://itr-client-hq-buejbopu5q-uc.a.run.app';
 }
 
 function adminBaseUrl(): string {
@@ -485,19 +495,25 @@ export const transitions = {
         );
       }
 
-      // Require deposit_paid audit_event before scheduling.
+      // Require an actual succeeded deposit payments row before scheduling
+      // (M9 fix #14). Earlier code keyed on the `deposit_paid` audit_event,
+      // which can drift from the payments table — money is the source of
+      // truth, audit is just the trail.
       const [paid] = await tx
-        .select({ id: auditEvents.id })
-        .from(auditEvents)
+        .select({ id: payments.id })
+        .from(payments)
         .where(
           and(
-            eq(auditEvents.retreatId, args.retreatId),
-            eq(auditEvents.eventType, 'deposit_paid'),
+            eq(payments.retreatId, args.retreatId),
+            eq(payments.kind, 'deposit'),
+            eq(payments.status, 'succeeded'),
           ),
         )
         .limit(1);
       if (!paid) {
-        throw new Error('confirmDates: deposit_paid audit_event missing');
+        throw new Error(
+          'confirmDates: no succeeded deposit payment on file',
+        );
       }
 
       await tx
