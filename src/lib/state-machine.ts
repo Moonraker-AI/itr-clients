@@ -1003,9 +1003,19 @@ export async function retryFailedCharge(args: {
   try {
     return await runRetry(args);
   } finally {
+    // Audit tier-9: a failed unlock leaves the session-scoped lock held
+    // until the pg connection is physically closed (NOT when client.release()
+    // returns it to the pool — pool reuses the same session). A leaked
+    // lock would silently block subsequent retry runs for this retreat.
+    // Log loudly so ops can drain/cycle the pool if it ever happens.
     await client
       .query('SELECT pg_advisory_unlock($1)', [key])
-      .catch(() => undefined);
+      .catch((err: unknown) => {
+        log.warn('retry_advisory_unlock_failed', {
+          retreatId: args.retreatId,
+          error: (err as Error).message,
+        });
+      });
     client.release();
   }
 }
