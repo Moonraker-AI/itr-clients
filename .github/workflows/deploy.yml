@@ -34,6 +34,9 @@ jobs:
             # Bind the Workspace SA key only in prod. Dev stays in
             # auto-dry-run via gmail.ts when GMAIL_SERVICE_ACCOUNT_KEY is unset.
             echo "gmail_secrets_part=,GMAIL_SERVICE_ACCOUNT_KEY=gmail-service-account:latest" >> "$GITHUB_OUTPUT"
+            # Stripe publishable keys are public (Stripe ships them in browser
+            # bundles). Plain env-var binding, not Secret Manager.
+            echo "stripe_publishable_key=pk_live_51JxjLSDGT6bz5bfXkPu4UjfVHJlGQfv6KuiEFQOoE6TObxef5IBxrxgUsK3UBP027ZEywML8kWU12njCtWDy94A900m17hywYm" >> "$GITHUB_OUTPUT"
           else
             echo "env_name=dev" >> "$GITHUB_OUTPUT"
             echo "project=${{ vars.GCP_PROJECT_ID_DEV }}" >> "$GITHUB_OUTPUT"
@@ -41,6 +44,7 @@ jobs:
             echo "runtime_sa=itr-app@${{ vars.GCP_PROJECT_ID_DEV }}.iam.gserviceaccount.com" >> "$GITHUB_OUTPUT"
             echo "cloud_sql_instance=${{ vars.GCP_PROJECT_ID_DEV }}:${{ vars.GCP_REGION }}:itr-postgres-dev" >> "$GITHUB_OUTPUT"
             echo "gmail_secrets_part=" >> "$GITHUB_OUTPUT"
+            echo "stripe_publishable_key=pk_test_51JxjLSDGT6bz5bfXKhpVK9a7sqDGYjjFyWPjgZUQBIMJxdBaHkxVzjK69jPis4wL9Q4L8Eh0ChRZIFMhb9kIZraT009io4Exf7" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Auth to GCP via WIF
@@ -59,5 +63,5 @@ jobs:
             --region=${{ vars.GCP_REGION }} \
             --service-account=projects/${{ steps.env.outputs.project }}/serviceAccounts/${{ steps.env.outputs.deployer_sa }} \
             --config=infra/cloudbuild.yaml \
-            '--substitutions=^|^COMMIT_SHA=${{ github.sha }}|_PROJECT=${{ steps.env.outputs.project }}|_REGION=${{ vars.GCP_REGION }}|_SERVICE=itr-client-hq|_RUNTIME_SA=${{ steps.env.outputs.runtime_sa }}|_CLOUD_SQL_INSTANCE=${{ steps.env.outputs.cloud_sql_instance }}|_GMAIL_SECRETS_PART=${{ steps.env.outputs.gmail_secrets_part }}' \
+            '--substitutions=^|^COMMIT_SHA=${{ github.sha }}|_PROJECT=${{ steps.env.outputs.project }}|_REGION=${{ vars.GCP_REGION }}|_SERVICE=itr-client-hq|_RUNTIME_SA=${{ steps.env.outputs.runtime_sa }}|_CLOUD_SQL_INSTANCE=${{ steps.env.outputs.cloud_sql_instance }}|_GMAIL_SECRETS_PART=${{ steps.env.outputs.gmail_secrets_part }}|_STRIPE_PUBLISHABLE_KEY=${{ steps.env.outputs.stripe_publishable_key }}' \
             .
