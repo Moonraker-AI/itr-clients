@@ -78,7 +78,41 @@ adminClientsNewRoute.post('/', async (c) => {
   if (!therapistId || !firstName || !lastName || !email) {
     return c.json({ error: 'missing_required_fields' }, 400);
   }
-  if (plannedFullDays < 0 || plannedHalfDays < 0 || plannedFullDays + plannedHalfDays === 0) {
+  // Audit tier-10 — defensive bounds on free-text fields. clients.* columns
+  // are TEXT (unbounded); without a cap a typo or a paste accident could
+  // insert a megabyte of text. Caps are generous vs realistic data.
+  const FIELD_CAPS = {
+    firstName: 80,
+    lastName: 80,
+    email: 254, // RFC 5321 SMTP limit
+    phone: 32,
+    stateOfResidence: 64,
+    pricingNotes: 1000,
+  } as const;
+  if (
+    firstName.length > FIELD_CAPS.firstName ||
+    lastName.length > FIELD_CAPS.lastName ||
+    email.length > FIELD_CAPS.email ||
+    (phone && phone.length > FIELD_CAPS.phone) ||
+    (stateOfResidence && stateOfResidence.length > FIELD_CAPS.stateOfResidence) ||
+    (pricingNotes && pricingNotes.length > FIELD_CAPS.pricingNotes)
+  ) {
+    return c.json({ error: 'field_too_long' }, 400);
+  }
+  // Minimal email shape check — one '@', no whitespace. Full RFC 5322 is
+  // not worth the complexity here; the recipient mailbox will bounce if
+  // it's nonsense.
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return c.json({ error: 'invalid_email' }, 400);
+  }
+  if (
+    !Number.isInteger(plannedFullDays) ||
+    !Number.isInteger(plannedHalfDays) ||
+    plannedFullDays < 0 ||
+    plannedHalfDays < 0 ||
+    plannedFullDays + plannedHalfDays === 0 ||
+    plannedFullDays + plannedHalfDays > 30
+  ) {
     return c.json({ error: 'invalid_day_counts' }, 400);
   }
 
@@ -94,14 +128,30 @@ adminClientsNewRoute.post('/', async (c) => {
   const achDiscountPct = pc ? Number(pc.achDiscountPct) : 0.03;
   const affirmUpliftPct = pc ? Number(pc.affirmUpliftPct) : 0.1;
 
-  const fullDayRateCents =
-    overrideFullDayDollars && pricingBasis !== 'standard'
-      ? Math.round(Number(overrideFullDayDollars) * 100)
-      : t.defaultFullDayCents;
-  const halfDayRateCents =
-    overrideHalfDayDollars && pricingBasis !== 'standard'
-      ? Math.round(Number(overrideHalfDayDollars) * 100)
-      : t.defaultHalfDayCents;
+  // Audit tier-10 — Number() coerces '' or 'abc' to NaN, then Math.round
+  // returns NaN, then Drizzle would push NaN to an integer column. Reject
+  // explicitly. Cap at $10,000/day to catch a stray decimal-point fat-finger.
+  const parseDollarOverride = (raw: string): number | null | 'invalid' => {
+    if (!raw) return null;
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0 || n > 10_000) return 'invalid';
+    return Math.round(n * 100);
+  };
+  let fullDayRateCents = t.defaultFullDayCents;
+  let halfDayRateCents = t.defaultHalfDayCents;
+  if (pricingBasis !== 'standard') {
+    const overrideFull = parseDollarOverride(overrideFullDayDollars);
+    if (overrideFull === 'invalid') {
+      return c.json({ error: 'invalid_full_day_override' }, 400);
+    }
+    if (overrideFull != null) fullDayRateCents = overrideFull;
+
+    const overrideHalf = parseDollarOverride(overrideHalfDayDollars);
+    if (overrideHalf === 'invalid') {
+      return c.json({ error: 'invalid_half_day_override' }, 400);
+    }
+    if (overrideHalf != null) halfDayRateCents = overrideHalf;
+  }
 
   if (plannedHalfDays > 0 && halfDayRateCents == null) {
     return c.json({ error: 'therapist_no_half_day_rate' }, 400);
