@@ -156,11 +156,22 @@ const server = serve({ fetch: app.fetch, port }, (info) => {
   });
 });
 
-// Cloud Run sends SIGTERM ~10s before shutting an instance down.
-// Drain in-flight requests before exiting.
+// Cloud Run sends SIGTERM ~10s before shutting an instance down. Drain
+// in-flight requests, then close the DB pool so in-flight queries flush
+// rather than getting abandoned (M9 fix #48).
 const shutdown = (signal: string) => {
   log.info('shutdown', { signal });
-  server.close(() => process.exit(0));
+  server.close(async () => {
+    try {
+      const { pool } = await getDb();
+      await pool.end();
+    } catch (err) {
+      log.error('shutdown_pool_drain_failed', {
+        error: (err as Error).message,
+      });
+    }
+    process.exit(0);
+  });
   setTimeout(() => process.exit(1), 9000).unref();
 };
 process.on('SIGTERM', () => shutdown('SIGTERM'));

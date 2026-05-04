@@ -86,6 +86,12 @@ adminRefundRoute.post('/:id/refund', async (c) => {
   const paymentId = String(form.get('payment_id') ?? '').trim();
   const amountDollarsRaw = String(form.get('amount_dollars') ?? '').trim();
   const reasonNote = String(form.get('reason_note') ?? '').trim();
+  // PHI guard (M9 fix #30): admins occasionally paste client context into
+  // free-text fields. Reject obvious shapes server-side rather than letting
+  // them land in audit_event payloads + email_log.
+  if (reasonNote && hasPhiShape(reasonNote)) {
+    return c.redirect(`/admin/clients/${id}/refund?error=reason_note_contains_phi`);
+  }
 
   if (!paymentId) {
     return c.redirect(`/admin/clients/${id}/refund?error=missing_payment`);
@@ -281,4 +287,11 @@ function escHtml(s: string): string {
 }
 function escAttr(s: string): string {
   return escHtml(s).replaceAll('"', '&quot;').replaceAll("'", '&#39;');
+}
+
+const PHI_EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/;
+const PHI_PHONE_RE = /\b\d{3}[\s.-]?\d{3}[\s.-]?\d{4}\b/;
+const PHI_DOB_RE = /\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4})\b/;
+function hasPhiShape(s: string): boolean {
+  return PHI_EMAIL_RE.test(s) || PHI_PHONE_RE.test(s) || PHI_DOB_RE.test(s);
 }
