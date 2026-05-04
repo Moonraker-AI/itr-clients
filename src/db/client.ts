@@ -2,6 +2,7 @@ import { Connector, IpAddressTypes } from '@google-cloud/cloud-sql-connector';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 
+import { log } from '../lib/phi-redactor.js';
 import * as schema from './schema.js';
 
 /**
@@ -31,13 +32,10 @@ export async function getDb(): Promise<DbHandle> {
   const pool = await buildPool();
 
   pool.on('error', (err) => {
-    console.error(
-      JSON.stringify({
-        severity: 'ERROR',
-        message: 'pg_pool_error',
-        error: err.message,
-      }),
-    );
+    // Use the structured logger so the line picks up trace correlation
+    // and PHI redaction. pg pool errors are libpq-level and don't carry
+    // PHI in practice, but consistency matters for log aggregation.
+    log.error('pg_pool_error', { error: err.message });
   });
 
   handle = { db: drizzle(pool, { schema }), pool };
