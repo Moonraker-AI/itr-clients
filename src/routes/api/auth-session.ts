@@ -80,6 +80,12 @@ authSessionRoute.post('/session', async (c) => {
   }
   const idToken = typeof body.idToken === 'string' ? body.idToken : '';
   if (!idToken) return c.json({ error: 'missing_id_token' }, 400);
+  // Firebase ID tokens are JWTs around ~1.5 KB. Cap at 4 KB so a junk
+  // payload doesn't burn an Identity Platform verifyIdToken round-trip
+  // (each one counts against the project quota).
+  if (idToken.length > 4096) {
+    return c.json({ error: 'id_token_too_long' }, 400);
+  }
 
   const result = await createSessionCookieFromIdToken(idToken);
   if ('error' in result) {

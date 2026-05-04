@@ -130,6 +130,9 @@ function getClient(): Stripe | null {
   // request slots until the 60s service timeout fires. 15s + 2 retries
   // bounds the worst-case at ~45s with one network blip absorbed.
   cachedClient = new Stripe(key, {
+    // Pin the API version so a Stripe-side default change doesn't silently
+    // alter response shapes mid-deploy. Bumped intentionally with the SDK.
+    apiVersion: '2026-04-22.dahlia',
     appInfo: { name: 'itr-client-hq', version: '0.8.0' },
     timeout: 15_000,
     maxNetworkRetries: 2,
