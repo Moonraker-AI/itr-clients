@@ -177,7 +177,28 @@ function base64Url(buf: Buffer): string {
   return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
+function assertNoHeaderInjection(field: string, value: string): void {
+  if (typeof value !== 'string') {
+    throw new Error(`gmail: ${field} must be a string`);
+  }
+  if (/[\r\n]/.test(value)) {
+    throw new Error(`gmail: ${field} contains CR/LF — refused (header injection)`);
+  }
+}
+
 export async function sendEmail(args: SendArgs): Promise<SendResult> {
+  // Header-injection guard (M9 fix #9). Any CR/LF in `to`, `subject`, or
+  // attachment `filename` lets a poisoned input append arbitrary RFC 2822
+  // headers (Bcc:, From:) and turn the message into a smuggling vector.
+  // We refuse the send rather than try to sanitize.
+  assertNoHeaderInjection('to', args.to);
+  assertNoHeaderInjection('subject', args.subject);
+  if (args.fromName) assertNoHeaderInjection('fromName', args.fromName);
+  for (const a of args.attachments ?? []) {
+    assertNoHeaderInjection(`attachment.filename`, a.filename);
+    assertNoHeaderInjection(`attachment.mimeType`, a.mimeType);
+  }
+
   // Dry-run if explicitly requested OR if the service-account key is not
   // bound. Lets dev environments run end-to-end without a Workspace SA
   // secret; prod must bind GMAIL_SERVICE_ACCOUNT_KEY to send for real.
@@ -209,10 +230,17 @@ export async function sendEmail(args: SendArgs): Promise<SendResult> {
   const gmail = google.gmail({ version: 'v1', auth });
   const raw = base64Url(Buffer.from(rfc2822(args), 'utf8'));
 
-  const res = await gmail.users.messages.send({
-    userId: 'me',
-    requestBody: { raw },
-  });
+  // 10s timeout (M9 fix #20). googleapis/gaxios supports a per-request
+  // timeout that aborts the underlying HTTP socket; without it a network
+  // hang stalls the request path for the gaxios default (~30s) and pins
+  // Cloud Run instance slots inside state-machine transitions.
+  const res = await gmail.users.messages.send(
+    {
+      userId: 'me',
+      requestBody: { raw },
+    },
+    { timeout: 10_000 },
+  );
 
   const messageId = res.data.id ?? '';
   if (!messageId) throw new Error('gmail send returned no message id');

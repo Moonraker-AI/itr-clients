@@ -22,6 +22,7 @@
  */
 
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import type Stripe from 'stripe';
 
 import { log } from '../../lib/phi-redactor.js';
@@ -33,7 +34,13 @@ import {
 
 export const stripeWebhookRoute = new Hono();
 
-stripeWebhookRoute.post('/', async (c) => {
+// Webhook service is `--allow-unauthenticated`; pre-signature anyone on the
+// internet can POST. Cap body at 256 KB (M9 fix #11). Stripe events are
+// ~50 KB max; 256 KB is generous and prevents memory exhaustion.
+stripeWebhookRoute.post('/', bodyLimit({
+  maxSize: 262_144,
+  onError: (c) => c.json({ error: 'payload_too_large' }, 413),
+}), async (c) => {
   const sig = c.req.header('stripe-signature');
   if (!sig) {
     log.error('stripe_webhook_missing_signature_header', {});
@@ -191,6 +198,11 @@ async function dispatch(event: Stripe.Event): Promise<void> {
         log.warn('stripe_webhook_missing_retreat_id', { type: event.type });
         return;
       }
+      // Derive `attempt` from prior failed payments rows so the M6
+      // exhaustion notify fires when the webhook arrives for the 3rd
+      // failure (M9 fix #26). Without this, the webhook path always
+      // passed attempt=1 and never escalated.
+      const attempt = await derivePaymentAttempt(retreatId);
       await transitions.markFinalChargeFailed({
         retreatId,
         actor: { kind: 'stripe', eventId: event.id },
@@ -198,6 +210,7 @@ async function dispatch(event: Stripe.Event): Promise<void> {
         failureMessage: pi.last_payment_error?.message ?? '',
         stripePaymentIntentId: pi.id,
         amountCents: pi.amount,
+        attempt,
       });
       return;
     }
@@ -205,4 +218,23 @@ async function dispatch(event: Stripe.Event): Promise<void> {
       log.info('stripe_webhook_event_ignored', { type: event.type });
       return;
   }
+}
+
+async function derivePaymentAttempt(retreatId: string): Promise<number> {
+  const { getDb } = await import('../../db/client.js');
+  const { payments } = await import('../../db/schema.js');
+  const { and, eq, ne } = await import('drizzle-orm');
+  const { db } = await getDb();
+  const rows = await db
+    .select({ id: payments.id })
+    .from(payments)
+    .where(
+      and(
+        eq(payments.retreatId, retreatId),
+        eq(payments.kind, 'final'),
+        ne(payments.status, 'succeeded'),
+      ),
+    );
+  // +1 because this in-flight failure isn't yet recorded.
+  return rows.length + 1;
 }

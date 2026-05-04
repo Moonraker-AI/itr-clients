@@ -47,7 +47,9 @@ export async function getDb(): Promise<DbHandle> {
 async function buildPool(): Promise<pg.Pool> {
   const localUrl = process.env.LOCAL_DB_URL;
   if (localUrl) {
-    return new pg.Pool({ connectionString: localUrl, max: 5 });
+    const pool = new pg.Pool({ connectionString: localUrl, ...POOL_DEFAULTS });
+    attachStatementTimeout(pool);
+    return pool;
   }
 
   const instance = requireEnv('CLOUD_SQL_INSTANCE');
@@ -56,13 +58,17 @@ async function buildPool(): Promise<pg.Pool> {
   // Migration path: Cloud Run Job mounts /cloudsql/<INSTANCE> as a unix
   // socket via --add-cloudsql-instances. No VPC config required.
   if (process.env.MIGRATE_VIA_SOCKET === '1') {
-    return new pg.Pool({
+    const pool = new pg.Pool({
       host: `/cloudsql/${instance}`,
       user,
       password,
       database,
       max: 2,
+      idleTimeoutMillis: POOL_DEFAULTS.idleTimeoutMillis,
+      connectionTimeoutMillis: POOL_DEFAULTS.connectionTimeoutMillis,
     });
+    attachStatementTimeout(pool);
+    return pool;
   }
 
   // Runtime path: mTLS-encrypted, IAM-authenticated tunnel via the Cloud SQL
@@ -74,12 +80,36 @@ async function buildPool(): Promise<pg.Pool> {
     ipType: IpAddressTypes.PRIVATE,
   });
 
-  return new pg.Pool({
+  const pool = new pg.Pool({
     ...clientOpts,
     user,
     password,
     database,
-    max: 5, // Cloud Run is small + scales to zero. Keep it tight.
+    ...POOL_DEFAULTS,
+  });
+  attachStatementTimeout(pool);
+  return pool;
+}
+
+// Pool defaults hardened in M9 (audit #21):
+//   idleTimeoutMillis: Cloud SQL closes idle connections after a few
+//     minutes; without this pg-pool keeps stale sockets that throw on
+//     the next acquire. 30s keeps the pool warm without holding dead
+//     handles.
+//   connectionTimeoutMillis: bound the wait for a connection on a busy
+//     pool so a pool-saturation stall doesn't pin the request for 60s.
+const POOL_DEFAULTS = {
+  max: 5, // Cloud Run is small + scales to zero. Keep it tight.
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 5_000,
+} as const;
+
+// statement_timeout is set per-connection on first checkout. Cap at 10s
+// so a runaway query can't hold a pool slot until Cloud Run kills the
+// instance. Set in pg's milliseconds-as-string syntax.
+function attachStatementTimeout(pool: pg.Pool): void {
+  pool.on('connect', (client) => {
+    client.query("SET statement_timeout TO '10s'").catch(() => undefined);
   });
 }
 

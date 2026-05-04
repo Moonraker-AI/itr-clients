@@ -125,8 +125,14 @@ function getClient(): Stripe | null {
   if (cachedClient) return cachedClient;
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) return null; // dry-run mode
+  // Timeouts + retries hardened in M9 (audit #19): default Stripe SDK
+  // timeout is 80s and retries=0; a Stripe outage would pin Cloud Run
+  // request slots until the 60s service timeout fires. 15s + 2 retries
+  // bounds the worst-case at ~45s with one network blip absorbed.
   cachedClient = new Stripe(key, {
-    appInfo: { name: 'itr-client-hq', version: '0.3.0' },
+    appInfo: { name: 'itr-client-hq', version: '0.8.0' },
+    timeout: 15_000,
+    maxNetworkRetries: 2,
   });
   return cachedClient;
 }
