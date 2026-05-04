@@ -1,5 +1,6 @@
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 
 import { getDb } from './db/client.js';
 import { stripeWebhookRoute } from './routes/api/webhooks-stripe.js';
@@ -107,6 +108,20 @@ if (!webhookOnly) {
   // unauthenticated by definition; everything else under /admin requires
   // a valid session cookie when AUTH_ENABLED=1, else falls through to a
   // synthetic admin user (dev / pre-rollout no-op).
+  // Defense-in-depth body cap on every authenticated POST surface. Forms
+  // here are short — the largest is admin/clients-new with ~12 capped
+  // text fields (~5 KB worst-case). 64 KB is generous and prevents
+  // memory-exhaustion DoS from an authenticated bad actor or a
+  // misconfigured client. Public consents / Stripe webhook bring their
+  // own bodyLimit (1 MB / 256 KB respectively) since they accept larger
+  // payloads.
+  const adminBodyLimit = bodyLimit({
+    maxSize: 65_536,
+    onError: (c) => c.json({ error: 'payload_too_large' }, 413),
+  });
+  app.use('/admin/*', adminBodyLimit);
+  app.use('/api/auth/*', adminBodyLimit);
+
   app.route('/admin', adminLoginRoute);
   app.route('/api/auth', authSessionRoute);
   app.use('/admin/*', requireAuth);
