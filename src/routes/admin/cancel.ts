@@ -75,7 +75,16 @@ adminCancelRoute.post('/:id/cancel', async (c) => {
   if (String(form.get('confirm') ?? '') !== 'yes') {
     return c.redirect(`/admin/clients/${id}/cancel?error=must_confirm`);
   }
-  const reason = String(form.get('reason') ?? '').trim().slice(0, 200) || undefined;
+  const reasonRaw = String(form.get('reason') ?? '').trim();
+  if (reasonRaw.length > 200) {
+    return c.redirect(`/admin/clients/${id}/cancel?error=reason_too_long`);
+  }
+  // PHI guard (M9 fix #30 parallel): reject obvious client-context shapes
+  // server-side rather than letting them land in audit_event payloads.
+  if (reasonRaw && hasPhiShape(reasonRaw)) {
+    return c.redirect(`/admin/clients/${id}/cancel?error=reason_contains_phi`);
+  }
+  const reason = reasonRaw || undefined;
 
   try {
     await transitions.cancel({
@@ -146,4 +155,11 @@ function escHtml(s: string): string {
 }
 function escAttr(s: string): string {
   return escHtml(s).replaceAll('"', '&quot;').replaceAll("'", '&#39;');
+}
+
+const PHI_EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/;
+const PHI_PHONE_RE = /\b\d{3}[\s.-]?\d{3}[\s.-]?\d{4}\b/;
+const PHI_DOB_RE = /\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4})\b/;
+function hasPhiShape(s: string): boolean {
+  return PHI_EMAIL_RE.test(s) || PHI_PHONE_RE.test(s) || PHI_DOB_RE.test(s);
 }

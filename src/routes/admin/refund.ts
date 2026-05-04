@@ -86,6 +86,9 @@ adminRefundRoute.post('/:id/refund', async (c) => {
   const paymentId = String(form.get('payment_id') ?? '').trim();
   const amountDollarsRaw = String(form.get('amount_dollars') ?? '').trim();
   const reasonNote = String(form.get('reason_note') ?? '').trim();
+  if (reasonNote.length > 200) {
+    return c.redirect(`/admin/clients/${id}/refund?error=reason_note_too_long`);
+  }
   // PHI guard (M9 fix #30): admins occasionally paste client context into
   // free-text fields. Reject obvious shapes server-side rather than letting
   // them land in audit_event payloads + email_log.
@@ -183,7 +186,7 @@ adminRefundRoute.post('/:id/refund', async (c) => {
       stripeChargeId: res.refundId,
       amountCents: -res.amountCents,
       status: 'succeeded',
-      failureMessage: reasonNote ? reasonNote.slice(0, 200) : null,
+      failureMessage: reasonNote || null,
       attemptCount: refundAttempt,
       lastAttemptedAt: new Date(),
     });
@@ -197,7 +200,7 @@ adminRefundRoute.post('/:id/refund', async (c) => {
         refund_id: res.refundId,
         amount_cents: res.amountCents,
         full_refund: amountCents == null,
-        reason_note: reasonNote ? reasonNote.slice(0, 200) : null,
+        reason_note: reasonNote || null,
         refund_attempt: refundAttempt,
       },
     });
