@@ -1,15 +1,24 @@
 #!/usr/bin/env bash
 #
-# Audit #28 — aggregate alarm on notification email failures.
+# Audit #28 + #18 — operational alerts for the notification + retry paths.
 #
-# Creates a log-based metric that counts `notify_send_failed` ERROR log
-# entries (notifications.ts:230) and an alert policy that pages when the
-# rate climbs above the threshold for a sustained window. This is the
-# operational signal that Gmail/Workspace delivery is broken — without
-# it, individual failures only show up in `email_log.status` long after
-# the client experience has degraded.
+# Provisions two independent log-based metric / alert pairs:
 #
-# Idempotent: re-running updates the metric/policy in place.
+#   1. `itr-notify-send-failures` (audit #28)
+#        Counts `notify_send_failed` ERROR log entries (notifications.ts:230).
+#        Pages when Gmail/Workspace delivery is broken — without it,
+#        individual failures only show up in `email_log.status` long after
+#        the client experience has degraded.
+#
+#   2. `itr-final-charge-retry-exhausted` (audit #18)
+#        Counts `CRITICAL_final_charge_retry_exhausted` ERROR log entries
+#        (state-machine.ts: markFinalChargeFailed when attempt >= 3).
+#        Pages on the FIRST occurrence — every exhausted retreat needs
+#        manual recovery (Stripe portal, payment update, or refund).
+#        This is the in-band signal so the alert still fires when the
+#        notify() email path itself is down.
+#
+# Idempotent: re-running updates each metric/policy in place.
 #
 # Usage:
 #   scripts/m7-create-notification-alarm.sh dev
@@ -142,5 +151,84 @@ fi
 
 rm -f "${POLICY_FILE}"
 
-echo "==> done. View policy in console:"
+# 4. Second metric + policy: final-charge retry exhaustion (audit #18).
+#    Targets the redundant in-band signal that fires from
+#    state-machine.ts:markFinalChargeFailed when attempt >= 3.
+EXHAUST_METRIC="itr-final-charge-retry-exhausted"
+EXHAUST_POLICY="itr-final-charge-retry-exhausted-alert"
+EXHAUST_FILTER='resource.type="cloud_run_revision"
+severity=ERROR
+jsonPayload.message="CRITICAL_final_charge_retry_exhausted"'
+
+if gcloud logging metrics describe "${EXHAUST_METRIC}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
+  echo "==> updating existing metric ${EXHAUST_METRIC}"
+  gcloud logging metrics update "${EXHAUST_METRIC}" \
+    --project="${PROJECT_ID}" \
+    --description="ITR retreats with 3 failed final-charge attempts (state-machine.ts: CRITICAL_final_charge_retry_exhausted)" \
+    --log-filter="${EXHAUST_FILTER}" \
+    --quiet
+else
+  echo "==> creating metric ${EXHAUST_METRIC}"
+  gcloud logging metrics create "${EXHAUST_METRIC}" \
+    --project="${PROJECT_ID}" \
+    --description="ITR retreats with 3 failed final-charge attempts (state-machine.ts: CRITICAL_final_charge_retry_exhausted)" \
+    --log-filter="${EXHAUST_FILTER}"
+fi
+
+# Threshold: any (>0) occurrence over 5 min triggers. Each exhausted
+# retreat needs human action regardless of frequency.
+EXHAUST_POLICY_FILE=$(mktemp)
+cat >"${EXHAUST_POLICY_FILE}" <<EOF
+{
+  "displayName": "${EXHAUST_POLICY}",
+  "documentation": {
+    "content": "ITR final-charge retry attempts exhausted (3/3) for one or more retreats. Manual recovery required: open the admin detail page for the retreatId in the log payload, contact the client via the Stripe customer portal, or process a refund. See state-machine.ts: CRITICAL_final_charge_retry_exhausted for the source line.",
+    "mimeType": "text/markdown"
+  },
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "final_charge_retry_exhausted > 0 over 5m",
+      "conditionThreshold": {
+        "filter": "resource.type=\"cloud_run_revision\" AND metric.type=\"logging.googleapis.com/user/${EXHAUST_METRIC}\"",
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 0,
+        "duration": "0s",
+        "aggregations": [
+          {
+            "alignmentPeriod": "300s",
+            "perSeriesAligner": "ALIGN_SUM"
+          }
+        ]
+      }
+    }
+  ],
+  "notificationChannels": ["${CHANNEL_NAME}"],
+  "alertStrategy": {
+    "autoClose": "86400s"
+  }
+}
+EOF
+
+EXISTING_EXHAUST_POLICY=$(gcloud alpha monitoring policies list \
+  --project="${PROJECT_ID}" \
+  --filter="displayName=${EXHAUST_POLICY}" \
+  --format='value(name)' 2>/dev/null | head -n1 || true)
+
+if [[ -n "${EXISTING_EXHAUST_POLICY}" ]]; then
+  echo "==> updating existing policy ${EXISTING_EXHAUST_POLICY}"
+  gcloud alpha monitoring policies update "${EXISTING_EXHAUST_POLICY}" \
+    --project="${PROJECT_ID}" \
+    --policy-from-file="${EXHAUST_POLICY_FILE}" \
+    --quiet
+else
+  echo "==> creating policy ${EXHAUST_POLICY}"
+  gcloud alpha monitoring policies create \
+    --project="${PROJECT_ID}" \
+    --policy-from-file="${EXHAUST_POLICY_FILE}"
+fi
+
+rm -f "${EXHAUST_POLICY_FILE}"
+
+echo "==> done. View policies in console:"
 echo "    https://console.cloud.google.com/monitoring/alerting/policies?project=${PROJECT_ID}"
