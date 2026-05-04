@@ -96,11 +96,18 @@ adminCompleteRoute.post('/:id/complete', async (c) => {
   const actualFullDays = Number(form.get('actual_full_days') ?? 0);
   const actualHalfDays = Number(form.get('actual_half_days') ?? 0);
 
+  // Upper bound: a real retreat tops out at ~30 day-equivalents. 365 is
+  // the absolute sanity ceiling — anything past that is a fat-finger or
+  // an attempt to overflow the rate × days multiplication. Reject before
+  // the numbers reach the pricing engine.
+  const MAX_DAY_COUNT = 365;
   if (
     !Number.isInteger(actualFullDays) ||
     !Number.isInteger(actualHalfDays) ||
     actualFullDays < 0 ||
     actualHalfDays < 0 ||
+    actualFullDays > MAX_DAY_COUNT ||
+    actualHalfDays > MAX_DAY_COUNT ||
     actualFullDays + actualHalfDays === 0
   ) {
     return c.redirect(`/admin/clients/${id}/complete?error=invalid_day_counts`);
