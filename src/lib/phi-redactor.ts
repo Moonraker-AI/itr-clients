@@ -46,9 +46,17 @@ const MAX_FREE_TEXT = 120;
 
 function scrubString(s: string): string {
   if (s.length === 0) return s;
-  if (URL_RE.test(s) || STACK_RE.test(s) || UUID_RE.test(s)) return s;
+  // Always allow opaque ids + ISO timestamps through unchanged — they
+  // are structural metadata and DO NOT match PHI regex anyway.
+  if (UUID_RE.test(s)) return s;
   if (ISO_DATETIME_RE.test(s)) return s;
   if (ISO_DATE_RE.test(s)) return s;
+
+  // Stack traces and URLs still get PHI regex applied (M9 fix #12 + #13)
+  // — earlier behavior whitelisted URLs entirely, which let `?email=…`
+  // query-strings or stack frames containing PHI through. We skip only
+  // the free-text length truncation for them so debugging info survives.
+  const isStructural = URL_RE.test(s) || STACK_RE.test(s);
 
   let out = s
     .replace(EMAIL_RE, REDACTED)
@@ -58,7 +66,7 @@ function scrubString(s: string): string {
 
   // Very long strings that aren't already-known structural data are likely
   // free-text notes. Truncate hard rather than trying to parse them.
-  if (out.length > MAX_FREE_TEXT) {
+  if (!isStructural && out.length > MAX_FREE_TEXT) {
     out = `${out.slice(0, MAX_FREE_TEXT)}…[truncated]`;
   }
   return out;
@@ -72,10 +80,12 @@ export function redact(value: unknown, depth = 0): unknown {
   if (typeof value === 'bigint') return value.toString();
   if (Array.isArray(value)) return value.map((v) => redact(v, depth + 1));
   if (value instanceof Error) {
+    // Scrub stack same as message (M9 fix #13). Node sometimes embeds
+    // argument values in async stack frames, leaking PHI to logs.
     return {
       name: value.name,
       message: scrubString(value.message),
-      stack: value.stack,
+      stack: value.stack ? scrubString(value.stack) : undefined,
     };
   }
   if (typeof value === 'object') {

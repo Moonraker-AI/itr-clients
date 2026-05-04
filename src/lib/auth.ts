@@ -31,7 +31,10 @@ import { therapists } from '../db/schema.js';
 import { log } from './phi-redactor.js';
 
 const ALLOWED_DOMAIN = 'intensivetherapyretreat.com';
-const SESSION_COOKIE = 'session';
+// __Host- prefix (M9 fix #8): browser refuses to set/return the cookie
+// unless `Secure`, `Path=/`, and the Domain attribute is omitted. Prevents
+// a sibling subdomain from shadowing the cookie.
+const SESSION_COOKIE = '__Host-session';
 const SESSION_TTL_DAYS = 5;
 const SESSION_TTL_MS = SESSION_TTL_DAYS * 24 * 60 * 60 * 1000;
 

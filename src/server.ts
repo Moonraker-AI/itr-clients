@@ -1,6 +1,7 @@
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 
+import { getDb } from './db/client.js';
 import { stripeWebhookRoute } from './routes/api/webhooks-stripe.js';
 import { cronStateTransitionsRoute } from './routes/api/cron-state-transitions.js';
 import { cronRetryFailedChargesRoute } from './routes/api/cron-retry-failed-charges.js';
@@ -21,14 +22,59 @@ import { log } from './lib/phi-redactor.js';
 
 const app = new Hono();
 
+// Standard hardening headers on every response (M9 fix #42 + #43).
+// CSP is intentionally permissive for our two specific external scripts
+// (Firebase JS SDK on /admin/login, Stripe.js on /c/:token/confirm-payment);
+// no other inline-script tag should be loading from elsewhere.
+app.use('*', async (c, next) => {
+  await next();
+  c.header('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
+  c.header('X-Content-Type-Options', 'nosniff');
+  c.header('X-Frame-Options', 'DENY');
+  c.header('Referrer-Policy', 'no-referrer');
+  // CSP only on HTML responses — JSON/redirects don't need it and adding
+  // it everywhere can break unexpected client tooling.
+  const ct = c.res.headers.get('content-type') ?? '';
+  if (ct.includes('text/html')) {
+    c.header(
+      'Content-Security-Policy',
+      [
+        "default-src 'self'",
+        "img-src 'self' data:",
+        "style-src 'self' 'unsafe-inline'",
+        "script-src 'self' 'unsafe-inline' https://www.gstatic.com https://js.stripe.com",
+        "connect-src 'self' https://*.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://api.stripe.com",
+        "frame-src https://js.stripe.com https://*.stripe.com https://*.firebaseapp.com https://accounts.google.com",
+        "frame-ancestors 'none'",
+        "base-uri 'self'",
+        "form-action 'self'",
+      ].join('; '),
+    );
+  }
+});
+
 // Cloud Run uses TCP probes by default, but a real health endpoint
 // is useful for uptime monitors and the future load balancer.
 // Note: Google Frontend reserves `/healthz` on *.run.app domains and
 // intercepts it before the container. Use `/health` as the primary.
+//
+// /health: always 200, no DB touch — survives transient DB blips.
+// /ready: pings the DB; uptime monitors that gate traffic should use this
+//   so a DB-broken instance doesn't get marked healthy (M9 fix #22).
 const health = (c: import('hono').Context) =>
   c.json({ ok: true, ts: new Date().toISOString() });
 app.get('/health', health);
 app.get('/healthz', health);
+app.get('/ready', async (c) => {
+  try {
+    const { pool } = await getDb();
+    await pool.query('SELECT 1');
+    return c.json({ ok: true, db: 'ok', ts: new Date().toISOString() });
+  } catch (err) {
+    log.error('ready_db_check_failed', { error: (err as Error).message });
+    return c.json({ ok: false, db: 'error' }, 503);
+  }
+});
 
 app.get('/', (c) =>
   c.text(`ITR Client HQ — ${process.env.K_REVISION ?? 'local'}\n`),
@@ -83,6 +129,20 @@ app.onError((err, c) => {
   });
   return c.json({ error: 'internal_error' }, 500);
 });
+
+// Defense-in-depth (M9 fix #23): the cron routes are IAM-gated by
+// Cloud Run, but a configuration drift would silently expose them;
+// require the shared secret as a belt to the IAM suspenders. Skipped
+// for the webhook-only service since it doesn't host cron routes.
+// Skipped when LOCAL_DB_URL is set (local dev w/ proxy).
+if (
+  !webhookOnly &&
+  !process.env.LOCAL_DB_URL &&
+  !process.env.CRON_SHARED_SECRET
+) {
+  log.error('startup_aborted_missing_cron_shared_secret', {});
+  process.exit(1);
+}
 
 const port = Number(process.env.PORT) || 8080;
 

@@ -54,6 +54,14 @@ gcloud run services add-iam-policy-binding "itr-client-hq" \
   --member="serviceAccount:${RUNTIME_SA}" \
   --role="roles/run.invoker" >/dev/null
 
+# M9 fix #23: pass X-Cron-Secret header when env is bound. Mirrors
+# `m4-create-scheduler.sh`.
+HEADERS_FLAG=()
+if [[ -n "${CRON_SHARED_SECRET:-}" ]]; then
+  HEADERS_FLAG=(--update-headers="X-Cron-Secret=${CRON_SHARED_SECRET}")
+  echo "==> X-Cron-Secret header will be set on the job"
+fi
+
 if gcloud scheduler jobs describe "${JOB_NAME}" \
      --location="${REGION}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
   echo "==> updating existing job ${JOB_NAME}"
@@ -66,7 +74,8 @@ if gcloud scheduler jobs describe "${JOB_NAME}" \
     --http-method=POST \
     --oidc-service-account-email="${RUNTIME_SA}" \
     --oidc-token-audience="${SERVICE_URL}" \
-    --attempt-deadline=300s
+    --attempt-deadline=300s \
+    "${HEADERS_FLAG[@]}"
 else
   echo "==> creating new job ${JOB_NAME}"
   gcloud scheduler jobs create http "${JOB_NAME}" \
@@ -79,7 +88,8 @@ else
     --oidc-service-account-email="${RUNTIME_SA}" \
     --oidc-token-audience="${SERVICE_URL}" \
     --attempt-deadline=300s \
-    --description="M6 cron: retry final_charge_failed retreats with smart backoff (24h, 72h)"
+    --description="M6 cron: retry final_charge_failed retreats with smart backoff (24h, 72h)" \
+    "${HEADERS_FLAG[@]}"
 fi
 
 echo
