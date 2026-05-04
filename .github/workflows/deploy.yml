@@ -74,6 +74,10 @@ jobs:
             echo "firebase_auth_domain=${{ vars.FIREBASE_AUTH_DOMAIN_PROD }}" >> "$GITHUB_OUTPUT"
             echo "firebase_api_key=${{ vars.FIREBASE_API_KEY_PROD }}" >> "$GITHUB_OUTPUT"
             echo "auth_enabled=${{ vars.AUTH_ENABLED_PROD }}" >> "$GITHUB_OUTPUT"
+            # Public origin for client-facing token URLs in notify emails.
+            # Required when AUTH_ENABLED=1 (M9 fix #45). Set to the live
+            # custom domain or the prod *.run.app origin.
+            echo "public_base_url=${{ vars.PUBLIC_BASE_URL_PROD }}" >> "$GITHUB_OUTPUT"
           else
             echo "env_name=dev" >> "$GITHUB_OUTPUT"
             echo "project=${{ vars.GCP_PROJECT_ID_DEV }}" >> "$GITHUB_OUTPUT"
@@ -86,6 +90,7 @@ jobs:
             echo "firebase_auth_domain=${{ vars.FIREBASE_AUTH_DOMAIN_DEV }}" >> "$GITHUB_OUTPUT"
             echo "firebase_api_key=${{ vars.FIREBASE_API_KEY_DEV }}" >> "$GITHUB_OUTPUT"
             echo "auth_enabled=${{ vars.AUTH_ENABLED_DEV }}" >> "$GITHUB_OUTPUT"
+            echo "public_base_url=${{ vars.PUBLIC_BASE_URL_DEV }}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Auth to GCP via WIF
@@ -107,5 +112,5 @@ jobs:
             --region=${{ vars.GCP_REGION }} \
             --service-account=projects/${{ steps.env.outputs.project }}/serviceAccounts/${{ steps.env.outputs.deployer_sa }} \
             --config=infra/cloudbuild.yaml \
-            '--substitutions=^|^COMMIT_SHA=${{ github.sha }}|_PROJECT=${{ steps.env.outputs.project }}|_REGION=${{ vars.GCP_REGION }}|_SERVICE=itr-client-hq|_RUNTIME_SA=${{ steps.env.outputs.runtime_sa }}|_CLOUD_SQL_INSTANCE=${{ steps.env.outputs.cloud_sql_instance }}|_GMAIL_SECRETS_PART=${{ steps.env.outputs.gmail_secrets_part }}|_STRIPE_PUBLISHABLE_KEY=${{ steps.env.outputs.stripe_publishable_key }}|_AUTH_ENABLED=${{ steps.env.outputs.auth_enabled }}|_FIREBASE_PROJECT_ID=${{ steps.env.outputs.firebase_project_id }}|_FIREBASE_AUTH_DOMAIN=${{ steps.env.outputs.firebase_auth_domain }}|_FIREBASE_API_KEY=${{ steps.env.outputs.firebase_api_key }}' \
+            '--substitutions=^|^COMMIT_SHA=${{ github.sha }}|_PROJECT=${{ steps.env.outputs.project }}|_REGION=${{ vars.GCP_REGION }}|_SERVICE=itr-client-hq|_RUNTIME_SA=${{ steps.env.outputs.runtime_sa }}|_CLOUD_SQL_INSTANCE=${{ steps.env.outputs.cloud_sql_instance }}|_GMAIL_SECRETS_PART=${{ steps.env.outputs.gmail_secrets_part }}|_STRIPE_PUBLISHABLE_KEY=${{ steps.env.outputs.stripe_publishable_key }}|_AUTH_ENABLED=${{ steps.env.outputs.auth_enabled }}|_FIREBASE_PROJECT_ID=${{ steps.env.outputs.firebase_project_id }}|_FIREBASE_AUTH_DOMAIN=${{ steps.env.outputs.firebase_auth_domain }}|_FIREBASE_API_KEY=${{ steps.env.outputs.firebase_api_key }}|_PUBLIC_BASE_URL=${{ steps.env.outputs.public_base_url }}' \
             .
