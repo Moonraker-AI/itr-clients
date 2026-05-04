@@ -58,7 +58,9 @@ adminPricingRoute.post('/ach-discount', async (c) => {
   }
   const raw = form.get('ach_discount_pct');
   const pct = Number(raw);
-  if (!Number.isFinite(pct) || pct < 0 || pct >= 1) {
+  // Match the form's client-side max=0.5 (50% off ACH would be a typo
+  // even on the most generous day). Anything past that is a fat-finger.
+  if (!Number.isFinite(pct) || pct < 0 || pct > 0.5) {
     return c.json({ error: 'invalid_pct' }, 400);
   }
 
