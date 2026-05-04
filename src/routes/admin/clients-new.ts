@@ -23,6 +23,11 @@ import {
   therapists,
 } from '../../db/schema.js';
 import { syncConsentTemplatesToDb } from '../../lib/consent-templates.js';
+import {
+  csrfInputHtml,
+  ensureCsrfToken,
+  verifyCsrfToken,
+} from '../../lib/csrf.js';
 import { computePrice, formatCents } from '../../lib/pricing.js';
 import { log } from '../../lib/phi-redactor.js';
 import { transitions } from '../../lib/state-machine.js';
@@ -44,11 +49,15 @@ adminClientsNewRoute.get('/', async (c) => {
     .where(eq(therapists.active, true))
     .orderBy(asc(therapists.fullName));
 
-  return c.html(renderForm({ therapists: therapistRows }));
+  const csrfHtml = csrfInputHtml(ensureCsrfToken(c));
+  return c.html(renderForm({ therapists: therapistRows, csrfHtml }));
 });
 
 adminClientsNewRoute.post('/', async (c) => {
   const form = await c.req.formData();
+  if (!verifyCsrfToken(c, String(form.get('_csrf') ?? ''))) {
+    return c.json({ error: 'csrf_mismatch' }, 403);
+  }
   const get = (k: string) => (form.get(k) as string | null) ?? '';
   const getNum = (k: string) => Number(form.get(k) ?? 0);
 
@@ -181,7 +190,7 @@ interface TherapistOption {
   defaultHalfDayCents: number | null;
 }
 
-function renderForm(args: { therapists: TherapistOption[] }): string {
+function renderForm(args: { therapists: TherapistOption[]; csrfHtml: string }): string {
   const therapistOptions = args.therapists
     .map(
       (t) =>
@@ -215,6 +224,7 @@ function renderForm(args: { therapists: TherapistOption[] }): string {
 <body>
   <h1>New client + retreat</h1>
   <form method="post">
+    ${args.csrfHtml}
     <fieldset>
       <legend>Therapist</legend>
       <label>

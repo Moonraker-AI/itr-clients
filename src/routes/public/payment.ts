@@ -191,13 +191,18 @@ function renderConfirmPaymentPage(args: {
 <body>
   <h1>Confirm your payment</h1>
   <p>Your bank requires an extra verification step before we can complete the charge. Click the button below to confirm — you may be asked to authenticate with your bank.</p>
-  <button id="confirm">Confirm payment</button>
+  <button id="confirm"
+    data-publishable-key="${escAttr(args.publishableKey)}"
+    data-client-secret="${escAttr(args.clientSecret)}"
+    data-return-url="${escAttr(args.returnUrl)}">Confirm payment</button>
   <p id="status" class="err"></p>
   <script>
-    const stripe = Stripe(${JSON.stringify(args.publishableKey)});
-    const clientSecret = ${JSON.stringify(args.clientSecret)};
-    const returnUrl = ${JSON.stringify(args.returnUrl)};
+    // Read config from data-attributes (M9 fix #6) — avoids </script>
+    // injection in inline JS literals.
     const btn = document.getElementById('confirm');
+    const stripe = Stripe(btn.dataset.publishableKey);
+    const clientSecret = btn.dataset.clientSecret;
+    const returnUrl = btn.dataset.returnUrl;
     const status = document.getElementById('status');
     btn.addEventListener('click', async () => {
       btn.disabled = true;
@@ -217,4 +222,13 @@ function renderConfirmPaymentPage(args: {
   </script>
 </body>
 </html>`;
+}
+
+function escAttr(s: string): string {
+  return s
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
 }

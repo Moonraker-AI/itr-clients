@@ -404,9 +404,13 @@ export const payments = pgTable(
       .defaultNow(),
   },
   (t) => ({
-    paymentIntentIdx: uniqueIndex('payments_stripe_payment_intent_idx').on(
-      t.stripePaymentIntentId,
-    ),
+    // PARTIAL unique on PI id, scoped to non-refund kinds. Refund rows
+    // legitimately reuse the original PI (Stripe refunds target a PI),
+    // so excluding kind='refund' lets multiple refunds against the same
+    // PI co-exist (M9 fix; migration 0005).
+    paymentIntentIdx: uniqueIndex('payments_stripe_payment_intent_idx')
+      .on(t.stripePaymentIntentId)
+      .where(sql`${t.kind} <> 'refund'`),
   }),
 );
 

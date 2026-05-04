@@ -21,6 +21,11 @@ import {
   stripeCustomers,
 } from '../../db/schema.js';
 import { therapistCanAccess } from '../../lib/auth.js';
+import {
+  csrfInputHtml,
+  ensureCsrfToken,
+  verifyCsrfToken,
+} from '../../lib/csrf.js';
 import { log } from '../../lib/phi-redactor.js';
 import { transitions } from '../../lib/state-machine.js';
 import { chargeFinalBalance } from '../../lib/stripe.js';
@@ -54,6 +59,7 @@ adminCompleteRoute.get('/:id/complete', async (c) => {
   if (!therapistCanAccess(c.get('user'), row.therapistId)) return c.notFound();
 
   const error = c.req.query('error');
+  const csrfHtml = csrfInputHtml(ensureCsrfToken(c));
 
   return c.html(
     renderForm({
@@ -68,6 +74,7 @@ adminCompleteRoute.get('/:id/complete', async (c) => {
       depositCents: row.depositCents,
       clientName: `${row.clientFirstName} ${row.clientLastName}`,
       error: error ?? null,
+      csrfHtml,
     }),
   );
 });
@@ -83,6 +90,9 @@ adminCompleteRoute.post('/:id/complete', async (c) => {
   if (!therapistCanAccess(c.get('user'), owner.therapistId)) return c.notFound();
 
   const form = await c.req.formData();
+  if (!verifyCsrfToken(c, String(form.get('_csrf') ?? ''))) {
+    return c.json({ error: 'csrf_mismatch' }, 403);
+  }
   const actualFullDays = Number(form.get('actual_full_days') ?? 0);
   const actualHalfDays = Number(form.get('actual_half_days') ?? 0);
 
@@ -218,6 +228,7 @@ interface FormArgs {
   depositCents: number;
   clientName: string;
   error: string | null;
+  csrfHtml: string;
 }
 
 function renderForm(args: FormArgs): string {
@@ -258,6 +269,7 @@ function renderForm(args: FormArgs): string {
   ${stateBlock}
   ${errBlock}
   <form method="post">
+    ${args.csrfHtml}
     <label><span>Actual full days</span><input type="number" name="actual_full_days" min="0" step="1" value="${fullVal}" required></label>
     <label><span>Actual half days</span><input type="number" name="actual_half_days" min="0" step="1" value="${halfVal}" required></label>
     <button type="submit">Submit + charge balance</button>
