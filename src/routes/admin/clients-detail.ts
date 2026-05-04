@@ -3,9 +3,8 @@
  *
  * Renders: client + retreat snapshot, state, public client_token URL,
  * required consents w/ signed-or-not, recent audit events, recent emails.
- * Full M7 polish (edit / cancel / refund actions) lands later.
- *
- * Auth deferred (M8). Behind Cloud Run IAM auth in the meantime.
+ * Top-nav links to refund + cancel + dashboard. Therapist-scoped via the
+ * M8 requireAuth middleware + therapistCanAccess gate.
  */
 
 import { Hono } from 'hono';
@@ -213,7 +212,7 @@ adminClientsDetailRoute.get('/:id', async (c) => {
   </style>
 </head>
 <body>
-  <p class="topnav"><a href="/admin">← Dashboard</a> · <a href="/admin/clients/${escAttr(row.retreatId)}/refund">Refund</a></p>
+  <p class="topnav"><a href="/admin">← Dashboard</a> · <a href="/admin/clients/${escAttr(row.retreatId)}/refund">Refund</a> · <a href="/admin/clients/${escAttr(row.retreatId)}/cancel">Cancel</a></p>
   <h1>Retreat <code>${escHtml(row.retreatId)}</code></h1>
   <p><strong>State:</strong> <code>${escHtml(row.state)}</code></p>
 

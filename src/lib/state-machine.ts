@@ -15,8 +15,9 @@
  *               ↘ final_charge_failed → completed   (via recovery)
  *     ↘ cancelled (any time before completed)
  *
- * As of M2 phase 2: `sendConsentPackage`, `markConsentsSigned`, `cancel`
- * are wired. Stripe + scheduling transitions land in M3+ (still throw).
+ * All transitions are wired through M0–M8. `retryFailedCharge` is the
+ * one cron-side orchestrator that lives outside the `transitions` object
+ * because it composes Stripe + multiple transitions per call.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -121,10 +122,6 @@ function publicBaseUrl(): string {
 function adminBaseUrl(): string {
   return process.env.ADMIN_BASE_URL ?? publicBaseUrl();
 }
-
-const NOT_IMPLEMENTED = (where: string) => {
-  throw new Error(`state-machine: ${where} not implemented yet`);
-};
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
