@@ -26,6 +26,11 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Tag pushes (refs/tags/v*) target the `prod` GitHub Environment, which
+    # is configured (in repo Settings → Environments → prod) to require
+    # manual reviewer approval before any of this job's steps run. Branch
+    # pushes + PRs leave environment empty and proceed without a gate.
+    environment: ${{ startsWith(github.ref, 'refs/tags/v') && 'prod' || '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
