@@ -78,7 +78,11 @@ steps:
       - --project=$_PROJECT
       - --region=$_REGION
       - --service-account=$_RUNTIME_SA
-      - --no-allow-unauthenticated
+      # M8/M9 cutover: app-layer auth (requireAuth + Identity Platform) is
+      # the gate when AUTH_ENABLED=1. Stripe webhook is gated by signature
+      # verification. Public /c/:token/* paths use unguessable token. Pre-M8
+      # this was --no-allow-unauthenticated with Cloud Run IAM as the gate.
+      - --allow-unauthenticated
       - --ingress=all
       - --min-instances=0
       - --max-instances=5
