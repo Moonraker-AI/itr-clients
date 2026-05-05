@@ -17,16 +17,28 @@ export const Tbody: FC<Props> = ({ class: className, children }) => (
   <tbody class={cn('[&_tr:last-child]:border-0', className)}>{children}</tbody>
 );
 
-export const Tr: FC<Props> = ({ class: className, children }) => (
-  <tr
-    class={cn(
-      'border-b border-border transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted',
-      className,
-    )}
-  >
-    {children}
-  </tr>
-);
+type TrProps = PropsWithChildren<{
+  class?: string | undefined;
+  /** When set, the entire row becomes clickable and navigates here on click.
+   * Requires the consumer page to include the row-link script (or AdminShell). */
+  href?: string | undefined;
+}>;
+
+export const Tr: FC<TrProps> = ({ class: className, href, children }) => {
+  const dataAttrs: Record<string, string> = href ? { 'data-href': href } : {};
+  return (
+    <tr
+      class={cn(
+        'border-b border-border transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted',
+        href ? 'cursor-pointer' : null,
+        className,
+      )}
+      {...dataAttrs}
+    >
+      {children}
+    </tr>
+  );
+};
 
 export const Th: FC<Props> = ({ class: className, children }) => (
   <th

@@ -219,14 +219,11 @@ adminDashboardRoute.get('/', async (c) => {
                   : `${formatCents(r.totalPlannedCents)}`;
                 const totalSuffix = r.totalActualCents ? 'actual' : 'planned';
                 return (
-                  <Tr>
+                  <Tr href={`/admin/clients/${r.retreatId}`}>
                     <Td>
-                      <a
-                        href={`/admin/clients/${r.retreatId}`}
-                        class="font-mono text-xs text-primary hover:underline"
-                      >
+                      <span class="font-mono text-xs text-primary">
                         {r.retreatId.slice(0, 8)}
-                      </a>
+                      </span>
                     </Td>
                     <Td>
                       {r.clientFirstName} {r.clientLastName}
