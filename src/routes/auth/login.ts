@@ -90,8 +90,10 @@ adminLoginRoute.get('/login', (c) => {
   ${errBlock}
   <p class="meta">Sessions last 5 days. After that you'll be asked to sign in again.</p>
   <script>
-    // Read config from data-attributes (M9 fix #6) — avoids </script>
-    // injection that JSON.stringify does NOT escape.
+    // Read config from data-attributes (M9 fix #6) — avoids <\/script>
+    // injection that JSON.stringify does NOT escape. The escaped slash
+    // here is required because a literal </script> inside a script body
+    // closes the tag mid-comment.
     const btn = document.getElementById('signin');
     firebase.initializeApp({
       apiKey: btn.dataset.apiKey,
