@@ -19,7 +19,7 @@
     "db:studio": "drizzle-kit studio",
     "smoke:pdf": "tsx scripts/render-sample.ts",
     "smoke:retreat": "tsx scripts/seed-smoke-retreat.ts",
-    "test": "node --import tsx --test 'tests/**/*.test.ts'"
+    "test": "node --import tsx --test $(find tests -name '*.test.ts' -type f | sort)"
   },
   "dependencies": {
     "@fontsource-variable/outfit": "^5.2.8",
