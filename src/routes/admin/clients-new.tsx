@@ -1,7 +1,7 @@
 /**
  * /admin/clients/new — create client + retreat + send consent package.
  *
- * GET   renders a single-page HTML form (no JS dependency).
+ * GET   renders a single-page JSX form (no JS dependency).
  * POST  validates input, snapshots pricing onto the retreat, generates the
  *       client_token, seeds `retreat_required_consents` for every active
  *       template version, and fires the `sendConsentPackage` transition.
@@ -22,17 +22,36 @@ import {
   therapists,
 } from '../../db/schema.js';
 import { syncConsentTemplatesToDb } from '../../lib/consent-templates.js';
-import {
-  csrfInputHtml,
-  ensureCsrfToken,
-  verifyCsrfToken,
-} from '../../lib/csrf.js';
+import { ensureCsrfToken, verifyCsrfToken } from '../../lib/csrf.js';
 import { computePrice, formatCents } from '../../lib/pricing.js';
 import { log } from '../../lib/phi-redactor.js';
 import { transitions } from '../../lib/state-machine.js';
 import { generateClientToken } from '../../lib/tokens.js';
+import {
+  AdminShell,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CsrfInput,
+  Field,
+  Input,
+  Layout,
+  PageHeader,
+  Select,
+  Textarea,
+} from '../../lib/ui/index.js';
 
 export const adminClientsNewRoute = new Hono();
+
+interface TherapistOption {
+  id: string;
+  slug: string;
+  fullName: string;
+  defaultFullDayCents: number;
+  defaultHalfDayCents: number | null;
+}
 
 adminClientsNewRoute.get('/', async (c) => {
   const { db } = await getDb();
@@ -48,8 +67,137 @@ adminClientsNewRoute.get('/', async (c) => {
     .where(eq(therapists.active, true))
     .orderBy(asc(therapists.fullName));
 
-  const csrfHtml = csrfInputHtml(ensureCsrfToken(c));
-  return c.html(renderForm({ therapists: therapistRows, csrfHtml }));
+  const csrfToken = ensureCsrfToken(c);
+  const user = c.get('user');
+
+  return c.html(
+    <Layout title="New client + retreat — ITR Client HQ">
+      <AdminShell user={user} current="new">
+        <PageHeader title="New client + retreat" description="Create record and send the consent package." />
+
+        <form method="post" class="space-y-6 max-w-2xl">
+          <CsrfInput token={csrfToken} />
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Therapist</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Field label="Therapist" for="therapist_id">
+                <Select id="therapist_id" name="therapist_id" required>
+                  <option value="">Select…</option>
+                  {(therapistRows as TherapistOption[]).map((t) => (
+                    <option value={t.id}>
+                      {t.fullName} ({formatCents(t.defaultFullDayCents)} /{' '}
+                      {t.defaultHalfDayCents == null ? '—' : formatCents(t.defaultHalfDayCents)})
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Client</CardTitle>
+            </CardHeader>
+            <CardContent class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Field label="First name" for="first_name">
+                <Input id="first_name" name="first_name" required />
+              </Field>
+              <Field label="Last name" for="last_name">
+                <Input id="last_name" name="last_name" required />
+              </Field>
+              <Field label="Email" for="email">
+                <Input id="email" name="email" type="email" required />
+              </Field>
+              <Field label="Phone" for="phone">
+                <Input id="phone" name="phone" />
+              </Field>
+              <Field label="State of residence" for="state_of_residence" hint="2-letter abbreviation">
+                <Input
+                  id="state_of_residence"
+                  name="state_of_residence"
+                  placeholder="MA"
+                />
+              </Field>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Retreat</CardTitle>
+            </CardHeader>
+            <CardContent class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Field label="Full days" for="planned_full_days">
+                <Input
+                  id="planned_full_days"
+                  name="planned_full_days"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value="0"
+                  required
+                />
+              </Field>
+              <Field label="Half days" for="planned_half_days">
+                <Input
+                  id="planned_half_days"
+                  name="planned_half_days"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value="0"
+                  required
+                />
+              </Field>
+              <Field label="Payment method" for="payment_method">
+                <Select id="payment_method" name="payment_method">
+                  <option value="ach">ACH</option>
+                  <option value="card">Card</option>
+                </Select>
+              </Field>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Pricing</CardTitle>
+            </CardHeader>
+            <CardContent class="space-y-4">
+              <Field label="Basis" for="pricing_basis">
+                <Select id="pricing_basis" name="pricing_basis">
+                  <option value="standard">Standard</option>
+                  <option value="sliding_scale">Sliding scale</option>
+                  <option value="comp">Comp</option>
+                </Select>
+              </Field>
+              <p class="text-xs text-muted-foreground">
+                Override rates only when basis is sliding-scale or comp. Leave blank to use therapist default.
+              </p>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Field label="Override full-day ($)" for="override_full_day">
+                  <Input id="override_full_day" name="override_full_day" type="number" min="0" step="0.01" />
+                </Field>
+                <Field label="Override half-day ($)" for="override_half_day">
+                  <Input id="override_half_day" name="override_half_day" type="number" min="0" step="0.01" />
+                </Field>
+              </div>
+              <Field label="Pricing notes" for="pricing_notes" hint="Internal — never rendered client-side.">
+                <Textarea id="pricing_notes" name="pricing_notes" rows={3} />
+              </Field>
+            </CardContent>
+          </Card>
+
+          <div class="flex gap-3">
+            <Button type="submit" size="lg">
+              Create + send consent package
+            </Button>
+          </div>
+        </form>
+      </AdminShell>
+    </Layout>,
+  );
 });
 
 adminClientsNewRoute.post('/', async (c) => {
@@ -80,7 +228,7 @@ adminClientsNewRoute.post('/', async (c) => {
   }
   // Audit tier-10 — defensive bounds on free-text fields. clients.* columns
   // are TEXT (unbounded); without a cap a typo or a paste accident could
-  // insert a megabyte of text. Caps are generous vs realistic data.
+  // insert a megabyte of text.
   const FIELD_CAPS = {
     firstName: 80,
     lastName: 80,
@@ -99,9 +247,6 @@ adminClientsNewRoute.post('/', async (c) => {
   ) {
     return c.json({ error: 'field_too_long' }, 400);
   }
-  // Minimal email shape check — one '@', no whitespace. Full RFC 5322 is
-  // not worth the complexity here; the recipient mailbox will bounce if
-  // it's nonsense.
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return c.json({ error: 'invalid_email' }, 400);
   }
@@ -128,9 +273,6 @@ adminClientsNewRoute.post('/', async (c) => {
   const achDiscountPct = pc ? Number(pc.achDiscountPct) : 0.03;
   const affirmUpliftPct = pc ? Number(pc.affirmUpliftPct) : 0.1;
 
-  // Audit tier-10 — Number() coerces '' or 'abc' to NaN, then Math.round
-  // returns NaN, then Drizzle would push NaN to an integer column. Reject
-  // explicitly. Cap at $10,000/day to catch a stray decimal-point fat-finger.
   const parseDollarOverride = (raw: string): number | null | 'invalid' => {
     if (!raw) return null;
     const n = Number(raw);
@@ -168,7 +310,6 @@ adminClientsNewRoute.post('/', async (c) => {
   });
   const depositCents = fullDayRateCents; // 1 full day per DESIGN §6
 
-  // Sync templates to DB so we have IDs to snapshot. Idempotent + cheap.
   const templateIds = await syncConsentTemplatesToDb();
   if (templateIds.size === 0) {
     return c.json({ error: 'no_active_consent_templates' }, 500);
@@ -230,111 +371,3 @@ adminClientsNewRoute.post('/', async (c) => {
   });
   return c.redirect(`/admin/clients/${result.id}`);
 });
-
-interface TherapistOption {
-  id: string;
-  slug: string;
-  fullName: string;
-  defaultFullDayCents: number;
-  defaultHalfDayCents: number | null;
-}
-
-function renderForm(args: { therapists: TherapistOption[]; csrfHtml: string }): string {
-  const therapistOptions = args.therapists
-    .map(
-      (t) =>
-        `<option value="${escAttr(t.id)}" data-full="${t.defaultFullDayCents}" data-half="${
-          t.defaultHalfDayCents ?? ''
-        }">${escHtml(t.fullName)} (${formatCents(t.defaultFullDayCents)} / ${
-          t.defaultHalfDayCents == null ? '—' : formatCents(t.defaultHalfDayCents)
-        })</option>`,
-    )
-    .join('');
-
-  return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>New client + retreat — ITR Client HQ</title>
-  <style>
-    body { font: 14px system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
-    h1 { font-weight: 600; }
-    fieldset { border: 1px solid #ddd; padding: 1rem 1.2rem; margin-bottom: 1rem; }
-    legend { font-weight: 600; padding: 0 0.4rem; }
-    label { display: block; margin-bottom: 0.6rem; }
-    label span { display: inline-block; width: 200px; }
-    input, select, textarea { padding: 0.4rem; font: inherit; }
-    input[type=text], input[type=email], input[type=number], select, textarea { width: 320px; }
-    textarea { vertical-align: top; height: 4rem; }
-    button { padding: 0.5rem 1rem; cursor: pointer; }
-    .hint { color: #666; font-size: 12px; margin-left: 200px; }
-  </style>
-</head>
-<body>
-  <h1>New client + retreat</h1>
-  <form method="post">
-    ${args.csrfHtml}
-    <fieldset>
-      <legend>Therapist</legend>
-      <label>
-        <span>Therapist</span>
-        <select name="therapist_id" required>
-          <option value="">Select…</option>
-          ${therapistOptions}
-        </select>
-      </label>
-    </fieldset>
-
-    <fieldset>
-      <legend>Client</legend>
-      <label><span>First name</span><input name="first_name" type="text" required></label>
-      <label><span>Last name</span><input name="last_name" type="text" required></label>
-      <label><span>Email</span><input name="email" type="email" required></label>
-      <label><span>Phone</span><input name="phone" type="text"></label>
-      <label><span>State of residence</span><input name="state_of_residence" type="text" maxlength="2" placeholder="MA"></label>
-    </fieldset>
-
-    <fieldset>
-      <legend>Retreat</legend>
-      <label><span>Full days</span><input name="planned_full_days" type="number" min="0" step="1" value="0" required></label>
-      <label><span>Half days</span><input name="planned_half_days" type="number" min="0" step="1" value="0" required></label>
-      <label>
-        <span>Payment method</span>
-        <select name="payment_method">
-          <option value="ach">ACH</option>
-          <option value="card">Card</option>
-        </select>
-      </label>
-    </fieldset>
-
-    <fieldset>
-      <legend>Pricing</legend>
-      <label>
-        <span>Basis</span>
-        <select name="pricing_basis">
-          <option value="standard">Standard</option>
-          <option value="sliding_scale">Sliding scale</option>
-          <option value="comp">Comp</option>
-        </select>
-      </label>
-      <p class="hint">Override rates only when basis is sliding-scale or comp. Leave blank to use therapist default.</p>
-      <label><span>Override full-day ($)</span><input name="override_full_day" type="number" min="0" step="0.01"></label>
-      <label><span>Override half-day ($)</span><input name="override_half_day" type="number" min="0" step="0.01"></label>
-      <label><span>Pricing notes</span><textarea name="pricing_notes" placeholder="Internal — never rendered client-side."></textarea></label>
-    </fieldset>
-
-    <button type="submit">Create + send consent package</button>
-  </form>
-</body>
-</html>`;
-}
-
-function escHtml(s: string): string {
-  return s
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;');
-}
-function escAttr(s: string): string {
-  return escHtml(s).replaceAll('"', '&quot;').replaceAll("'", '&#39;');
-}

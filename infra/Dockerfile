@@ -8,6 +8,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --include=dev
 
 COPY tsconfig.json ./
+COPY scripts ./scripts
 COPY src ./src
 RUN npm run build
 

@@ -1,14 +1,16 @@
 {
   "name": "itr-clients",
-  "version": "0.8.10",
+  "version": "0.9.0",
   "private": true,
   "type": "module",
   "engines": {
     "node": ">=20.0.0 <21"
   },
   "scripts": {
-    "dev": "tsx watch src/server.ts",
-    "build": "tsc -p .",
+    "dev": "npm run build:assets && npm run build:css && tsx watch src/server.ts",
+    "build": "tsc -p . && npm run build:css && npm run build:assets",
+    "build:css": "tailwindcss -i ./src/styles/app.css -o ./dist/static/app.css --minify",
+    "build:assets": "node scripts/build-assets.mjs",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
@@ -18,6 +20,8 @@
     "smoke:pdf": "tsx scripts/render-sample.ts"
   },
   "dependencies": {
+    "@fontsource-variable/outfit": "^5.2.8",
+    "@fontsource/fira-code": "^5.2.7",
     "@google-cloud/cloud-sql-connector": "^1.4.0",
     "@google-cloud/storage": "^7.19.0",
     "@hono/node-server": "^1.13.0",
@@ -34,6 +38,7 @@
     "stripe": "^22.1.0"
   },
   "devDependencies": {
+    "@tailwindcss/cli": "^4.2.4",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.16.0",
     "@types/pg": "^8.11.0",

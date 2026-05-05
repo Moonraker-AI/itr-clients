@@ -1,35 +1,36 @@
 /**
  * /admin/clients/:id/complete — therapist completion form (M5).
- *
- *   GET   render form with planned vs actual day inputs.
- *   POST  call `transitions.submitCompletion`, attempt the off-session
- *         final charge, dispatch to `markCompleted` or
- *         `markFinalChargeFailed` based on result, redirect to detail.
- *
- * The synchronous handler-side attempt is authoritative for the immediate
- * transition; the Stripe webhook is wired (M5) as a redundant ack.
  */
 
 import { Hono } from 'hono';
 import { and, eq, sum } from 'drizzle-orm';
 
 import { getDb } from '../../db/client.js';
-import {
-  clients,
-  payments,
-  retreats,
-  stripeCustomers,
-} from '../../db/schema.js';
+import { clients, payments, retreats, stripeCustomers } from '../../db/schema.js';
 import { therapistCanAccess } from '../../lib/auth.js';
-import {
-  csrfInputHtml,
-  ensureCsrfToken,
-  verifyCsrfToken,
-} from '../../lib/csrf.js';
+import { ensureCsrfToken, verifyCsrfToken } from '../../lib/csrf.js';
 import { log } from '../../lib/phi-redactor.js';
 import { transitions } from '../../lib/state-machine.js';
 import { chargeFinalBalance } from '../../lib/stripe.js';
 import { formatCents } from '../../lib/pricing.js';
+import {
+  AdminShell,
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  CsrfInput,
+  Field,
+  Input,
+  Layout,
+  LinkButton,
+  PageHeader,
+} from '../../lib/ui/index.js';
 
 export const adminCompleteRoute = new Hono();
 
@@ -59,23 +60,97 @@ adminCompleteRoute.get('/:id/complete', async (c) => {
   if (!therapistCanAccess(c.get('user'), row.therapistId)) return c.notFound();
 
   const error = c.req.query('error');
-  const csrfHtml = csrfInputHtml(ensureCsrfToken(c));
+  const csrfToken = ensureCsrfToken(c);
+  const user = c.get('user');
+  const fullVal = row.actualFullDays ?? row.plannedFullDays;
+  const halfVal = row.actualHalfDays ?? row.plannedHalfDays;
+  const clientName = `${row.clientFirstName} ${row.clientLastName}`;
 
   return c.html(
-    renderForm({
-      retreatId: row.retreatId,
-      state: row.state,
-      plannedFullDays: row.plannedFullDays,
-      plannedHalfDays: row.plannedHalfDays,
-      actualFullDays: row.actualFullDays,
-      actualHalfDays: row.actualHalfDays,
-      fullDayRateCents: row.fullDayRateCents,
-      halfDayRateCents: row.halfDayRateCents,
-      depositCents: row.depositCents,
-      clientName: `${row.clientFirstName} ${row.clientLastName}`,
-      error: error ?? null,
-      csrfHtml,
-    }),
+    <Layout title="Complete retreat — ITR Client HQ">
+      <AdminShell user={user} current="dashboard">
+        <PageHeader
+          title="Complete retreat"
+          description={`${clientName} · ${id.slice(0, 8)}`}
+        >
+          <LinkButton href={`/admin/clients/${id}`} variant="ghost" size="sm">
+            ← back
+          </LinkButton>
+        </PageHeader>
+
+        <div class="max-w-2xl space-y-4">
+          {row.state !== 'in_progress' ? (
+            <Alert variant="destructive">
+              <AlertTitle>Wrong state</AlertTitle>
+              <AlertDescription>
+                State is <code class="font-mono">{row.state}</code> — only{' '}
+                <code class="font-mono">in_progress</code> can submit completion.
+              </AlertDescription>
+            </Alert>
+          ) : null}
+          {error ? (
+            <Alert variant="destructive">
+              <AlertDescription>{decodeURIComponent(error)}</AlertDescription>
+            </Alert>
+          ) : null}
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Snapshot</CardTitle>
+              <CardDescription>
+                Planned: {row.plannedFullDays} full + {row.plannedHalfDays} half · Rates:{' '}
+                {formatCents(row.fullDayRateCents)} full
+                {row.halfDayRateCents == null
+                  ? ''
+                  : ` / ${formatCents(row.halfDayRateCents)} half`}{' '}
+                · Deposit paid: {formatCents(row.depositCents)}
+              </CardDescription>
+            </CardHeader>
+            <CardContent class="text-sm text-muted-foreground">
+              Submitting will (1) lock actual day counts, (2) attempt the off-session final charge against
+              the saved payment method, (3) flip state to <code class="font-mono">completed</code> on
+              success or <code class="font-mono">final_charge_failed</code> on failure.
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Actual day counts</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form method="post" class="space-y-4">
+                <CsrfInput token={csrfToken} />
+                <div class="grid grid-cols-2 gap-4">
+                  <Field label="Actual full days" for="actual_full_days">
+                    <Input
+                      id="actual_full_days"
+                      name="actual_full_days"
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={String(fullVal)}
+                      required
+                    />
+                  </Field>
+                  <Field label="Actual half days" for="actual_half_days">
+                    <Input
+                      id="actual_half_days"
+                      name="actual_half_days"
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={String(halfVal)}
+                      required
+                    />
+                  </Field>
+                </div>
+                <Button type="submit">Submit + charge balance</Button>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      </AdminShell>
+    </Layout>,
   );
 });
 
@@ -96,10 +171,6 @@ adminCompleteRoute.post('/:id/complete', async (c) => {
   const actualFullDays = Number(form.get('actual_full_days') ?? 0);
   const actualHalfDays = Number(form.get('actual_half_days') ?? 0);
 
-  // Upper bound: a real retreat tops out at ~30 day-equivalents. 365 is
-  // the absolute sanity ceiling — anything past that is a fat-finger or
-  // an attempt to overflow the rate × days multiplication. Reject before
-  // the numbers reach the pricing engine.
   const MAX_DAY_COUNT = 365;
   if (
     !Number.isInteger(actualFullDays) ||
@@ -150,7 +221,6 @@ adminCompleteRoute.post('/:id/complete', async (c) => {
     .from(stripeCustomers)
     .where(eq(stripeCustomers.clientId, r.clientId));
 
-  // Balance = total actual - sum of succeeded deposits.
   const [paid] = await db
     .select({ total: sum(payments.amountCents) })
     .from(payments)
@@ -165,17 +235,10 @@ adminCompleteRoute.post('/:id/complete', async (c) => {
   const balance = r.totalActualCents - depositPaid;
 
   if (balance <= 0) {
-    // No balance owed (deposit covered everything). Mark completed with
-    // a synthetic zero-amount payments row keyed on a deterministic id so
-    // the webhook dispatch path doesn't double-write.
-    //
     // Audit #17: `final_zero_${id}` is collision-safe across re-completion
-    // because retreat ids are PKs (no two retreats share an id), and
-    // submitCompletion (state-machine.ts:663) refuses a second submission
-    // with different day counts — so the only way back into this branch
-    // is with identical args, which markCompleted's onConflictDoUpdate
-    // handles idempotently. Refund.ts:128 short-circuits this synthetic
-    // PI since there is no Stripe charge to reverse.
+    // because retreat ids are PKs, and submitCompletion refuses a second
+    // submission with different day counts. Refund.ts:128 short-circuits
+    // this synthetic PI since there is no Stripe charge to reverse.
     await transitions.markCompleted({
       retreatId: id,
       actor: { kind: 'system' },
@@ -191,8 +254,7 @@ adminCompleteRoute.post('/:id/complete', async (c) => {
       retreatId: id,
       actor: { kind: 'system' },
       failureCode: 'no_saved_payment_method',
-      failureMessage:
-        'no saved payment method on stripe_customers — cannot off-session charge',
+      failureMessage: 'no saved payment method on stripe_customers — cannot off-session charge',
     });
     return c.redirect(`/admin/clients/${id}`);
   }
@@ -207,10 +269,6 @@ adminCompleteRoute.post('/:id/complete', async (c) => {
   });
 
   if (charge.status === 'succeeded') {
-    // Critical-log mitigation for the "Stripe charged, DB write failed"
-    // window (M9 fix #3, partial). The Stripe webhook
-    // payment_intent.succeeded provides a redundant ack path; this log
-    // line gives operators a grep-able marker if both paths fail.
     log.info('final_charge_db_write_starting', {
       retreatId: id,
       paymentIntentId: charge.paymentIntentId,
@@ -239,9 +297,7 @@ adminCompleteRoute.post('/:id/complete', async (c) => {
       actor: { kind: 'system' },
       failureCode: charge.failureCode ?? 'unknown',
       failureMessage: charge.failureMessage ?? '',
-      ...(charge.paymentIntentId
-        ? { stripePaymentIntentId: charge.paymentIntentId }
-        : {}),
+      ...(charge.paymentIntentId ? { stripePaymentIntentId: charge.paymentIntentId } : {}),
       amountCents: balance,
       ...(charge.clientSecret ? { clientSecret: charge.clientSecret } : {}),
     });
@@ -249,73 +305,3 @@ adminCompleteRoute.post('/:id/complete', async (c) => {
 
   return c.redirect(`/admin/clients/${id}`);
 });
-
-interface FormArgs {
-  retreatId: string;
-  state: string;
-  plannedFullDays: number;
-  plannedHalfDays: number;
-  actualFullDays: number | null;
-  actualHalfDays: number | null;
-  fullDayRateCents: number;
-  halfDayRateCents: number | null;
-  depositCents: number;
-  clientName: string;
-  error: string | null;
-  csrfHtml: string;
-}
-
-function renderForm(args: FormArgs): string {
-  const stateBlock =
-    args.state !== 'in_progress'
-      ? `<p style="color:#a00"><strong>State is <code>${escHtml(args.state)}</code></strong> — only <code>in_progress</code> can submit completion.</p>`
-      : '';
-  const errBlock = args.error
-    ? `<p style="color:#a00"><strong>Error:</strong> ${escHtml(decodeURIComponent(args.error))}</p>`
-    : '';
-  const fullVal = args.actualFullDays ?? args.plannedFullDays;
-  const halfVal = args.actualHalfDays ?? args.plannedHalfDays;
-
-  return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>Complete retreat — ITR Client HQ</title>
-  <style>
-    body { font: 14px system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
-    h1 { font-weight: 600; }
-    label { display: block; margin-bottom: 0.6rem; }
-    label span { display: inline-block; width: 200px; }
-    input[type=number] { padding: 0.4rem; font: inherit; width: 100px; }
-    button { padding: 0.5rem 1rem; cursor: pointer; }
-    .meta { color: #666; }
-  </style>
-</head>
-<body>
-  <h1>Complete retreat</h1>
-  <p class="meta">Retreat <code>${escHtml(args.retreatId)}</code> · ${escHtml(args.clientName)}</p>
-  <p class="meta">
-    Planned: ${args.plannedFullDays} full + ${args.plannedHalfDays} half ·
-    Rates: ${formatCents(args.fullDayRateCents)} full ${args.halfDayRateCents == null ? '' : `/ ${formatCents(args.halfDayRateCents)} half`} ·
-    Deposit paid: ${formatCents(args.depositCents)}
-  </p>
-  <p class="meta">Submitting will (1) lock actual day counts, (2) attempt the off-session final charge against the saved payment method, (3) flip state to <code>completed</code> on success or <code>final_charge_failed</code> on failure.</p>
-  ${stateBlock}
-  ${errBlock}
-  <form method="post">
-    ${args.csrfHtml}
-    <label><span>Actual full days</span><input type="number" name="actual_full_days" min="0" step="1" value="${fullVal}" required></label>
-    <label><span>Actual half days</span><input type="number" name="actual_half_days" min="0" step="1" value="${halfVal}" required></label>
-    <button type="submit">Submit + charge balance</button>
-  </form>
-  <p><a href="/admin/clients/${escAttr(args.retreatId)}">← back to detail</a></p>
-</body>
-</html>`;
-}
-
-function escHtml(s: string): string {
-  return s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
-}
-function escAttr(s: string): string {
-  return escHtml(s).replaceAll('"', '&quot;').replaceAll("'", '&#39;');
-}

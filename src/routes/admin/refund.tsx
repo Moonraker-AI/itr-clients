@@ -1,36 +1,46 @@
 /**
  * /admin/clients/:id/refund — partial or full refund of a prior payment (M7).
- *
- *   GET   list refundable payments + form (target PI, amount, reason)
- *   POST  call stripe.refundPayment, write payments(kind='refund') row +
- *         audit_event 'refunded', redirect to detail.
- *
- * Refund does NOT change retreat state — it's orthogonal to the state
- * machine. The completed/cancelled/etc. state stays as-is; the
- * payments table grows a new row.
  */
 
 import { Hono } from 'hono';
 import { and, eq } from 'drizzle-orm';
 
 import { getDb } from '../../db/client.js';
-import {
-  auditEvents,
-  clients,
-  payments,
-  retreats,
-} from '../../db/schema.js';
+import { auditEvents, clients, payments, retreats } from '../../db/schema.js';
 import { therapistCanAccess } from '../../lib/auth.js';
-import {
-  csrfInputHtml,
-  ensureCsrfToken,
-  verifyCsrfToken,
-} from '../../lib/csrf.js';
+import { ensureCsrfToken, verifyCsrfToken } from '../../lib/csrf.js';
 import { log } from '../../lib/phi-redactor.js';
 import { formatCents } from '../../lib/pricing.js';
 import { refundPayment } from '../../lib/stripe.js';
+import {
+  AdminShell,
+  Alert,
+  AlertDescription,
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  CsrfInput,
+  Field,
+  Input,
+  Layout,
+  LinkButton,
+  PageHeader,
+  Select,
+  Textarea,
+} from '../../lib/ui/index.js';
 
 export const adminRefundRoute = new Hono();
+
+const PHI_EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/;
+const PHI_PHONE_RE = /\b\d{3}[\s.-]?\d{3}[\s.-]?\d{4}\b/;
+const PHI_DOB_RE = /\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4})\b/;
+function hasPhiShape(s: string): boolean {
+  return PHI_EMAIL_RE.test(s) || PHI_PHONE_RE.test(s) || PHI_DOB_RE.test(s);
+}
 
 adminRefundRoute.get('/:id/refund', async (c) => {
   const id = c.req.param('id');
@@ -63,17 +73,79 @@ adminRefundRoute.get('/:id/refund', async (c) => {
     .where(and(eq(payments.retreatId, id), eq(payments.status, 'succeeded')));
 
   const error = c.req.query('error');
-  const csrfHtml = csrfInputHtml(ensureCsrfToken(c));
+  const csrfToken = ensureCsrfToken(c);
+  const user = c.get('user');
+  const clientName = `${r.clientFirstName} ${r.clientLastName}`;
+  const filtered = refundable.filter((p) => p.kind !== 'refund');
 
   return c.html(
-    renderForm({
-      retreatId: r.retreatId,
-      state: r.state,
-      clientName: `${r.clientFirstName} ${r.clientLastName}`,
-      refundable,
-      error: error ?? null,
-      csrfHtml,
-    }),
+    <Layout title="Refund — ITR Client HQ">
+      <AdminShell user={user} current="dashboard">
+        <PageHeader title="Refund" description={`${clientName} · ${id.slice(0, 8)}`}>
+          <Badge variant="secondary">{r.state}</Badge>
+          <LinkButton href={`/admin/clients/${id}`} variant="ghost" size="sm">
+            ← back
+          </LinkButton>
+        </PageHeader>
+
+        <div class="max-w-2xl space-y-4">
+          {error ? (
+            <Alert variant="destructive">
+              <AlertDescription>{decodeURIComponent(error)}</AlertDescription>
+            </Alert>
+          ) : null}
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Refund a payment</CardTitle>
+              <CardDescription>
+                Refunding does NOT change retreat state. Writes a refund row + 'refunded' audit event.
+                Stripe processes the refund against the original PaymentIntent.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form method="post" class="space-y-4">
+                <CsrfInput token={csrfToken} />
+                <Field label="Target payment" for="payment_id">
+                  <Select id="payment_id" name="payment_id" required>
+                    <option value="">Select…</option>
+                    {filtered.map((p) => (
+                      <option value={p.id}>
+                        {p.kind} · {formatCents(p.amountCents)} ·{' '}
+                        {p.stripePaymentIntentId ?? 'no-PI'} · {p.createdAt.toISOString()}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Amount ($)" for="amount_dollars" hint="Leave blank for full refund">
+                  <Input
+                    id="amount_dollars"
+                    name="amount_dollars"
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    placeholder="leave blank for full refund"
+                  />
+                </Field>
+                <Field
+                  label="Reason note"
+                  for="reason_note"
+                  hint="Internal — never sent to Stripe metadata. ≤200 chars."
+                >
+                  <Textarea
+                    id="reason_note"
+                    name="reason_note"
+                    rows={3}
+                    placeholder="Internal note."
+                  />
+                </Field>
+                <Button type="submit">Submit refund</Button>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      </AdminShell>
+    </Layout>,
   );
 });
 
@@ -89,9 +161,6 @@ adminRefundRoute.post('/:id/refund', async (c) => {
   if (reasonNote.length > 200) {
     return c.redirect(`/admin/clients/${id}/refund?error=reason_note_too_long`);
   }
-  // PHI guard (M9 fix #30): admins occasionally paste client context into
-  // free-text fields. Reject obvious shapes server-side rather than letting
-  // them land in audit_event payloads + email_log.
   if (reasonNote && hasPhiShape(reasonNote)) {
     return c.redirect(`/admin/clients/${id}/refund?error=reason_note_contains_phi`);
   }
@@ -144,7 +213,6 @@ adminRefundRoute.post('/:id/refund', async (c) => {
     }
   }
 
-  // Count prior refunds against this same PI for the idempotency key.
   const priorRefunds = await db
     .select({ id: payments.id })
     .from(payments)
@@ -175,9 +243,6 @@ adminRefundRoute.post('/:id/refund', async (c) => {
     return c.redirect(`/admin/clients/${id}/refund?error=${code}`);
   }
 
-  // Persist a payments(kind='refund') row + audit event. Refund row keys
-  // on the refundId via stripe_charge_id — we don't have a separate refund
-  // unique index, so reuse stripe_charge_id text column.
   await db.transaction(async (tx) => {
     await tx.insert(payments).values({
       retreatId: id,
@@ -215,86 +280,3 @@ adminRefundRoute.post('/:id/refund', async (c) => {
 
   return c.redirect(`/admin/clients/${id}`);
 });
-
-interface FormArgs {
-  retreatId: string;
-  state: string;
-  clientName: string;
-  refundable: Array<{
-    id: string;
-    kind: 'deposit' | 'final' | 'refund';
-    amountCents: number;
-    status: string;
-    stripePaymentIntentId: string | null;
-    createdAt: Date;
-  }>;
-  error: string | null;
-  csrfHtml: string;
-}
-
-function renderForm(args: FormArgs): string {
-  const refundOptions = args.refundable
-    .filter((p) => p.kind !== 'refund')
-    .map(
-      (p) =>
-        `<option value="${escAttr(p.id)}">${escHtml(p.kind)} · ${formatCents(p.amountCents)} · ${escHtml(p.stripePaymentIntentId ?? 'no-PI')} · ${escHtml(p.createdAt.toISOString())}</option>`,
-    )
-    .join('');
-
-  const errBlock = args.error
-    ? `<p style="color:#a00"><strong>Error:</strong> ${escHtml(decodeURIComponent(args.error))}</p>`
-    : '';
-
-  return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>Refund — ITR Client HQ</title>
-  <style>
-    body { font: 14px system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
-    h1 { font-weight: 600; }
-    label { display: block; margin-bottom: 0.6rem; }
-    label span { display: inline-block; width: 200px; }
-    select, input, textarea { padding: 0.4rem; font: inherit; }
-    select, input[type=text], input[type=number], textarea { width: 420px; }
-    textarea { vertical-align: top; height: 4rem; }
-    button { padding: 0.5rem 1rem; cursor: pointer; }
-    .meta { color: #666; }
-  </style>
-</head>
-<body>
-  <h1>Refund</h1>
-  <p class="meta">Retreat <code>${escHtml(args.retreatId)}</code> · ${escHtml(args.clientName)} · state <code>${escHtml(args.state)}</code></p>
-  <p class="meta">Refunding does NOT change retreat state. It writes a refund row to the payments table and a 'refunded' audit event. Stripe processes the refund against the original PaymentIntent.</p>
-  ${errBlock}
-  <form method="post">
-    ${args.csrfHtml}
-    <label>
-      <span>Target payment</span>
-      <select name="payment_id" required>
-        <option value="">Select…</option>
-        ${refundOptions}
-      </select>
-    </label>
-    <label><span>Amount ($)</span><input type="number" name="amount_dollars" min="0.01" step="0.01" placeholder="leave blank for full refund"></label>
-    <label><span>Reason note</span><textarea name="reason_note" placeholder="Internal — never sent to Stripe metadata. Free-text up to 200 chars."></textarea></label>
-    <button type="submit">Submit refund</button>
-  </form>
-  <p><a href="/admin/clients/${escAttr(args.retreatId)}">← back to detail</a></p>
-</body>
-</html>`;
-}
-
-function escHtml(s: string): string {
-  return s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
-}
-function escAttr(s: string): string {
-  return escHtml(s).replaceAll('"', '&quot;').replaceAll("'", '&#39;');
-}
-
-const PHI_EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/;
-const PHI_PHONE_RE = /\b\d{3}[\s.-]?\d{3}[\s.-]?\d{4}\b/;
-const PHI_DOB_RE = /\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4})\b/;
-function hasPhiShape(s: string): boolean {
-  return PHI_EMAIL_RE.test(s) || PHI_PHONE_RE.test(s) || PHI_DOB_RE.test(s);
-}

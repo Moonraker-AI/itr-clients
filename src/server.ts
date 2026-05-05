@@ -1,4 +1,5 @@
 import { serve } from '@hono/node-server';
+import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 
@@ -104,6 +105,19 @@ const webhookOnly = process.env.WEBHOOK_ONLY === '1';
 app.route('/api/webhooks/stripe', stripeWebhookRoute);
 
 if (!webhookOnly) {
+  // Static assets (M10): Tailwind-compiled CSS + self-hosted fonts. Long
+  // cache header on hashed-or-immutable filenames; the CSS file changes
+  // on every deploy so the revision query string from <link> bust cache.
+  app.use(
+    '/static/*',
+    serveStatic({
+      root: './dist',
+      onFound: (_path, c) => {
+        c.header('Cache-Control', 'public, max-age=31536000, immutable');
+      },
+    }),
+  );
+
   // Auth wiring (DESIGN.md §12 M8). Login page + session API are
   // unauthenticated by definition; everything else under /admin requires
   // a valid session cookie when AUTH_ENABLED=1, else falls through to a
