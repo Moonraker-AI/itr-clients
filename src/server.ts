@@ -22,6 +22,7 @@ import { publicCheckoutRoute } from './routes/public/checkout.js';
 import { publicConsentsRoute } from './routes/public/consents.js';
 import { publicPaymentRoute } from './routes/public/payment.js';
 import { log } from './lib/phi-redactor.js';
+import { clientIp, createRateLimiter } from './lib/rate-limit.js';
 import { parseTraceId, runWithTrace } from './lib/trace-context.js';
 
 const app = new Hono();
@@ -153,6 +154,30 @@ if (!webhookOnly) {
   // Dashboard mounted last so it doesn't shadow the more specific
   // /admin/* routes above.
   app.route('/admin', adminDashboardRoute);
+
+  // Rate limit (P1#8): defense-in-depth on the token-gated public surface.
+  // Token is 192-bit so brute-force enumeration is infeasible, but a bot
+  // hammering /c/<known-token>/checkout could still rack up Stripe API
+  // calls. 60 req/min/IP is generous for a real client (status + multiple
+  // consent pages + checkout + recovery typically tops out around 20).
+  // In-memory counter is per-Cloud-Run-instance — see lib/rate-limit.ts
+  // for the trade-off (acceptable as defense-in-depth; not a hard cap).
+  const publicRateLimiter = createRateLimiter({
+    windowMs: 60_000,
+    max: 60,
+    bucketKey: clientIp,
+  });
+  app.use(
+    '/c/*',
+    publicRateLimiter.middleware({
+      onBlock: (c) =>
+        log.warn('public_rate_limited', {
+          ip: clientIp(c),
+          path: c.req.path,
+        }),
+    }),
+  );
+
   app.route('/c', publicConsentsRoute);
   app.route('/c', publicCheckoutRoute);
   app.route('/c', publicPaymentRoute);
