@@ -49,6 +49,15 @@ type TherapistSeed = {
 
 const THERAPISTS: TherapistSeed[] = [
   {
+    slug: 'chris-morin',
+    fullName: 'Chris Morin',
+    email: 'chris@intensivetherapyretreat.com',
+    role: 'admin',
+    locationSlug: 'northampton-ma',
+    fullDayCents: 0,
+    halfDayCents: null,
+  },
+  {
     slug: 'amy-shuman',
     fullName: 'Amy Shuman',
     email: 'amy@intensivetherapyretreat.com',
