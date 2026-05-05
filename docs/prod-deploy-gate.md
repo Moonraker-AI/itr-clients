@@ -6,30 +6,24 @@ approval before any step runs. The gate is enforced by the GitHub
 
 ## One-time setup
 
-Create the `prod` environment + add yourself as the required reviewer:
+Create the `prod` environment + add yourself as the required reviewer.
+The GitHub API requires `wait_timer` as integer and `deployment_branch_policy`
+as object/null, which `gh api`'s `-F`/`-f` flags can't express directly —
+pipe a raw JSON body via `--input -` instead:
 
 ```bash
-# Create the environment (idempotent)
-gh api -X PUT repos/Moonraker-AI/itr-clients/environments/prod \
-  -f wait_timer=0 \
-  -f deployment_branch_policy=null
-
-# Find your numeric user id
 USER_ID=$(gh api user --jq '.id')
 
-# Set yourself as the only required reviewer
-gh api -X PUT repos/Moonraker-AI/itr-clients/environments/prod \
-  -F "reviewers[][type]=User" \
-  -F "reviewers[][id]=$USER_ID" \
-  -f wait_timer=0 \
-  -f deployment_branch_policy=null
+echo "{\"reviewers\":[{\"type\":\"User\",\"id\":$USER_ID}],\"wait_timer\":0,\"deployment_branch_policy\":null}" | \
+  gh api -X PUT repos/Moonraker-AI/itr-clients/environments/prod --input -
 
 # Verify
-gh api repos/Moonraker-AI/itr-clients/environments/prod --jq '.protection_rules'
+gh api repos/Moonraker-AI/itr-clients/environments/prod \
+  --jq '.protection_rules[0].reviewers[0].reviewer.login'
 ```
 
-The `protection_rules` output should show a `required_reviewers` rule
-with your user id.
+The verify command should print your GitHub login (e.g. `Chris-Morin`).
+That confirms the environment exists and you are the required reviewer.
 
 ## Approve a prod deploy
 
