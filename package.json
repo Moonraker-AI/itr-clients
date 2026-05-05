@@ -1,6 +1,6 @@
 {
   "name": "itr-clients",
-  "version": "0.9.5",
+  "version": "0.9.6",
   "private": true,
   "type": "module",
   "engines": {
@@ -18,7 +18,8 @@
     "db:seed": "tsx src/db/seed.ts",
     "db:studio": "drizzle-kit studio",
     "smoke:pdf": "tsx scripts/render-sample.ts",
-    "smoke:retreat": "tsx scripts/seed-smoke-retreat.ts"
+    "smoke:retreat": "tsx scripts/seed-smoke-retreat.ts",
+    "test": "node --import tsx --test 'tests/**/*.test.ts'"
   },
   "dependencies": {
     "@fontsource-variable/outfit": "^5.2.8",
