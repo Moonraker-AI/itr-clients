@@ -10,3 +10,4 @@ export { Table, Thead, Tbody, Tr, Th, Td } from './table.js';
 export { Alert, AlertTitle, AlertDescription } from './alert.js';
 export { Field } from './field.js';
 export { CsrfInput } from './csrf.js';
+export { getTheme, type Theme } from './theme.js';
