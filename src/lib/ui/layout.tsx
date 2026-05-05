@@ -17,7 +17,6 @@ const PREPAINT_THEME = `
 
 const FAVICON_LINKS = (
   <>
-    <link rel="icon" type="image/svg+xml" href="/static/brand/logo.svg" />
     <link rel="icon" type="image/png" href="/static/brand/favicon.png" />
     <link rel="apple-touch-icon" href="/static/brand/apple-touch-icon.png" />
   </>
@@ -100,7 +99,7 @@ const MOON_ICON = (
 
 const LOGO_MARK = (
   <img
-    src="/static/brand/logo.svg"
+    src="/static/brand/logo.png"
     alt=""
     class="h-7 w-7 shrink-0"
     onerror="this.style.display='none'"
