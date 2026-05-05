@@ -136,7 +136,7 @@ function getClient(): Stripe | null {
     // Keep `appInfo.version` in lockstep with `package.json` "version".
     // Stripe surfaces this string in their dashboard's API request log so
     // mismatched values make per-revision debugging harder than it needs.
-    appInfo: { name: 'itr-client-hq', version: '0.8.6' },
+    appInfo: { name: 'itr-client-hq', version: '0.8.7' },
     timeout: 15_000,
     maxNetworkRetries: 2,
   });
