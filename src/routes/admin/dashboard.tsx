@@ -149,7 +149,7 @@ adminDashboardRoute.get('/', async (c) => {
   };
 
   return c.html(
-    <Layout title="Dashboard — ITR Client HQ">
+    <Layout title="Dashboard — ITR Clients">
       <AdminShell user={user} current="dashboard">
         <PageHeader title="Retreats" description={`${rows.length} of ${total} · offset ${offset}`}>
           <LinkButton href="/admin/clients/new" size="sm">

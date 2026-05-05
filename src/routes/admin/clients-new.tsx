@@ -71,7 +71,7 @@ adminClientsNewRoute.get('/', async (c) => {
   const user = c.get('user');
 
   return c.html(
-    <Layout title="New client + retreat — ITR Client HQ">
+    <Layout title="New client + retreat — ITR Clients">
       <AdminShell user={user} current="new">
         <PageHeader title="New client + retreat" description="Create record and send the consent package." />
 

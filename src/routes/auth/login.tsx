@@ -91,7 +91,7 @@ adminLoginRoute.get('/login', (c) => {
 
   if (!authEnabled) {
     return c.html(
-      <CenteredShell title="Login (disabled) — ITR Client HQ">
+      <CenteredShell title="Login (disabled) — ITR Clients">
         <Card>
           <CardHeader>
             <CardTitle>Login disabled</CardTitle>
@@ -141,11 +141,11 @@ adminLoginRoute.get('/login', (c) => {
   );
 
   return c.html(
-    <Layout title="Sign in — ITR Client HQ" head={head}>
+    <Layout title="Sign in — ITR Clients" head={head}>
       <div class="min-h-screen flex items-center justify-center px-4 py-12">
         <div class="w-full max-w-md space-y-6">
           <div class="text-center space-y-2">
-            <h1 class="text-3xl font-semibold tracking-tight">ITR Client HQ</h1>
+            <h1 class="text-3xl font-semibold tracking-tight">ITR Clients</h1>
             <p class="text-sm text-muted-foreground">
               Sign in with your <strong>@intensivetherapyretreat.com</strong> Google account.
             </p>

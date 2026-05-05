@@ -15,6 +15,14 @@ const PREPAINT_THEME = `
 })();
 `.trim();
 
+const FAVICON_LINKS = (
+  <>
+    <link rel="icon" type="image/svg+xml" href="/static/brand/logo.svg" />
+    <link rel="icon" type="image/png" href="/static/brand/favicon.png" />
+    <link rel="apple-touch-icon" href="/static/brand/apple-touch-icon.png" />
+  </>
+);
+
 type LayoutProps = PropsWithChildren<{
   title: string;
   /** Extra <head> tags (preconnect, scripts, etc). */
@@ -35,6 +43,7 @@ export const Layout: FC<LayoutProps> = ({ title, head, theme, scripts, children 
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="color-scheme" content="light dark" />
         <title>{title}</title>
+        {FAVICON_LINKS}
         <link rel="stylesheet" href="/static/app.css" />
         <script>{raw(PREPAINT_THEME)}</script>
         {head}
@@ -89,6 +98,15 @@ const MOON_ICON = (
   </svg>
 );
 
+const LOGO_MARK = (
+  <img
+    src="/static/brand/logo.svg"
+    alt=""
+    class="h-7 w-7 shrink-0"
+    onerror="this.style.display='none'"
+  />
+);
+
 const SHELL_SCRIPT = `
 (function(){
   var t = document.getElementById('theme-toggle');
@@ -140,17 +158,28 @@ const SHELL_SCRIPT = `
 })();
 `.trim();
 
+const ICON_BTN_CLASS =
+  'inline-flex items-center justify-center h-9 w-9 rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background';
+
+const TEXT_BTN_CLASS =
+  'inline-flex items-center justify-center h-9 px-3 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background';
+
 export const AdminShell: FC<AdminShellProps> = ({ user, current, children }) => {
   return (
     <div class="flex min-h-screen">
       <aside class="hidden w-64 shrink-0 border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex md:flex-col">
-        <div class="px-6 py-5 border-b border-sidebar-border">
-          <a href="/admin" class="text-base font-semibold tracking-tight">
-            ITR Client HQ
-          </a>
-          <p class="text-xs text-muted-foreground mt-0.5">Admin</p>
-        </div>
-        <nav class="flex-1 px-3 py-4 space-y-1">
+        <a
+          href="/admin"
+          class="h-16 px-6 flex items-center gap-3 border-b border-sidebar-border"
+        >
+          {LOGO_MARK}
+          <div>
+            <div class="text-base font-semibold tracking-tight leading-none">ITR Clients</div>
+            <div class="text-xs text-muted-foreground mt-1">Admin</div>
+          </div>
+        </a>
+
+        <nav class="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
           {NAV.map((item) => {
             const active = current === item.match;
             return (
@@ -168,32 +197,48 @@ export const AdminShell: FC<AdminShellProps> = ({ user, current, children }) => 
             );
           })}
         </nav>
-        {user ? (
-          <div class="px-6 py-4 border-t border-sidebar-border text-xs text-muted-foreground">
-            <div class="truncate">{user.name ?? user.email ?? 'Signed in'}</div>
+
+        <div class="border-t border-sidebar-border p-4 space-y-3">
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              id="theme-toggle"
+              aria-label="Toggle theme"
+              class={ICON_BTN_CLASS}
+            >
+              {SUN_ICON}
+              {MOON_ICON}
+            </button>
+            <button type="button" id="sign-out" class={TEXT_BTN_CLASS + ' flex-1'}>
+              Sign out
+            </button>
           </div>
-        ) : null}
+          {user ? (
+            <div class="text-xs text-muted-foreground truncate">
+              {user.name ?? user.email ?? 'Signed in'}
+            </div>
+          ) : null}
+        </div>
       </aside>
+
       <main class="flex-1 min-w-0">
-        <header class="border-b border-border bg-card px-4 py-3 flex items-center justify-between md:justify-end gap-2">
-          <a href="/admin" class="text-sm font-semibold md:hidden">
-            ITR Client HQ
+        {/* Mobile-only top bar: logo + name + theme + sign out (sidebar hidden on mobile). */}
+        <header class="md:hidden h-16 border-b border-border bg-card px-4 flex items-center justify-between gap-2">
+          <a href="/admin" class="flex items-center gap-2">
+            {LOGO_MARK}
+            <span class="text-sm font-semibold">ITR Clients</span>
           </a>
           <div class="flex items-center gap-2">
             <button
               type="button"
               id="theme-toggle"
               aria-label="Toggle theme"
-              class="inline-flex items-center justify-center h-9 w-9 rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              class={ICON_BTN_CLASS}
             >
               {SUN_ICON}
               {MOON_ICON}
             </button>
-            <button
-              type="button"
-              id="sign-out"
-              class="inline-flex items-center justify-center h-9 px-3 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-            >
+            <button type="button" id="sign-out" class={TEXT_BTN_CLASS}>
               Sign out
             </button>
           </div>
@@ -236,11 +281,12 @@ const WIDTH_CLASS: Record<NonNullable<ClientShellProps['width']>, string> = {
   lg: 'max-w-4xl',
 };
 
-/** Centered client-facing shell with subtle brand header. */
+/** Centered client-facing shell with brand header. */
 export const ClientShell: FC<ClientShellProps> = ({ width = 'md', children }) => (
   <div class="min-h-screen bg-background">
-    <header class="border-b border-border bg-card">
-      <div class={`mx-auto px-6 py-4 ${WIDTH_CLASS[width]}`}>
+    <header class="h-16 border-b border-border bg-card">
+      <div class={`h-full mx-auto px-6 flex items-center gap-3 ${WIDTH_CLASS[width]}`}>
+        {LOGO_MARK}
         <div class="text-sm font-semibold tracking-tight">Intensive Therapy Retreats</div>
       </div>
     </header>

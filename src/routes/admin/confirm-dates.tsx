@@ -65,7 +65,7 @@ adminConfirmDatesRoute.get('/:id/confirm-dates', async (c) => {
   const clientName = `${row.clientFirstName} ${row.clientLastName}`;
 
   return c.html(
-    <Layout title="Confirm dates — ITR Client HQ">
+    <Layout title="Confirm dates — ITR Clients">
       <AdminShell user={user} current="dashboard">
         <PageHeader title="Confirm retreat dates" description={`${clientName} · ${id.slice(0, 8)}`}>
           <LinkButton href={`/admin/clients/${id}`} variant="ghost" size="sm">

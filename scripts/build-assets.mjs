@@ -1,11 +1,12 @@
 #!/usr/bin/env node
-import { mkdir, copyFile } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
+import { mkdir, copyFile, readdir } from 'node:fs/promises';
+import { dirname, extname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const outFonts = resolve(root, 'dist/static/fonts');
 
+// Fonts ----------------------------------------------------------------
+const outFonts = resolve(root, 'dist/static/fonts');
 await mkdir(outFonts, { recursive: true });
 
 const fonts = [
@@ -18,5 +19,26 @@ for (const [pkgPath, outName] of fonts) {
   const src = resolve(root, 'node_modules', pkgPath);
   const dst = resolve(outFonts, outName);
   await copyFile(src, dst);
-  console.log(`copied ${outName}`);
+  console.log(`font: ${outName}`);
+}
+
+// Brand --------------------------------------------------------------
+const brandSrc = resolve(root, 'src/assets/brand');
+const brandDst = resolve(root, 'dist/static/brand');
+await mkdir(brandDst, { recursive: true });
+
+const ASSET_EXTS = new Set(['.svg', '.png', '.ico', '.webp', '.jpg', '.jpeg', '.gif']);
+
+let brandEntries = [];
+try {
+  brandEntries = await readdir(brandSrc, { withFileTypes: true });
+} catch {
+  // Folder absent — nothing to copy.
+}
+
+for (const entry of brandEntries) {
+  if (!entry.isFile()) continue;
+  if (!ASSET_EXTS.has(extname(entry.name).toLowerCase())) continue;
+  await copyFile(resolve(brandSrc, entry.name), resolve(brandDst, entry.name));
+  console.log(`brand: ${entry.name}`);
 }

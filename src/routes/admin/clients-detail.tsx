@@ -154,7 +154,7 @@ adminClientsDetailRoute.get('/:id', async (c) => {
   const user = c.get('user');
 
   return c.html(
-    <Layout title={`Retreat ${row.retreatId.slice(0, 8)} — ITR Client HQ`}>
+    <Layout title={`Retreat ${row.retreatId.slice(0, 8)} — ITR Clients`}>
       <AdminShell user={user} current="dashboard">
         <PageHeader
           title={`Retreat ${row.retreatId.slice(0, 8)}`}

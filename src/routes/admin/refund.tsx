@@ -79,7 +79,7 @@ adminRefundRoute.get('/:id/refund', async (c) => {
   const filtered = refundable.filter((p) => p.kind !== 'refund');
 
   return c.html(
-    <Layout title="Refund — ITR Client HQ">
+    <Layout title="Refund — ITR Clients">
       <AdminShell user={user} current="dashboard">
         <PageHeader title="Refund" description={`${clientName} · ${id.slice(0, 8)}`}>
           <Badge variant="secondary">{r.state}</Badge>

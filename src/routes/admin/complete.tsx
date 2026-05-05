@@ -67,7 +67,7 @@ adminCompleteRoute.get('/:id/complete', async (c) => {
   const clientName = `${row.clientFirstName} ${row.clientLastName}`;
 
   return c.html(
-    <Layout title="Complete retreat — ITR Client HQ">
+    <Layout title="Complete retreat — ITR Clients">
       <AdminShell user={user} current="dashboard">
         <PageHeader
           title="Complete retreat"

@@ -65,7 +65,7 @@ adminCancelRoute.get('/:id/cancel', async (c) => {
   const blockedState = row.state === 'completed' || row.state === 'cancelled';
 
   return c.html(
-    <Layout title="Cancel retreat — ITR Client HQ">
+    <Layout title="Cancel retreat — ITR Clients">
       <AdminShell user={user} current="dashboard">
         <PageHeader title="Cancel retreat" description={`${clientName} · ${id.slice(0, 8)}`}>
           <Badge variant="secondary">{row.state}</Badge>

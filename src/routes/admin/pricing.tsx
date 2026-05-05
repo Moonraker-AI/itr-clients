@@ -75,7 +75,7 @@ adminPricingRoute.get('/', async (c) => {
   const pctStr = (ach * 100).toFixed(2);
 
   return c.html(
-    <Layout title="Pricing — ITR Client HQ">
+    <Layout title="Pricing — ITR Clients">
       <AdminShell user={user} current="pricing">
         <PageHeader title="Pricing" description="Per-therapist rates and ACH discount config." />
 

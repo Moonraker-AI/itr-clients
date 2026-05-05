@@ -93,7 +93,7 @@ app.get('/ready', async (c) => {
 });
 
 app.get('/', (c) =>
-  c.text(`ITR Client HQ — ${process.env.K_REVISION ?? 'local'}\n`),
+  c.text(`ITR Clients — ${process.env.K_REVISION ?? 'local'}\n`),
 );
 
 // WEBHOOK_ONLY=1 deploys this image as the public webhook-only Cloud Run
