@@ -9,7 +9,6 @@
  */
 
 import { Hono } from 'hono';
-import { raw } from 'hono/html';
 import { and, desc, eq } from 'drizzle-orm';
 
 import { getDb } from '../../db/client.js';
@@ -186,29 +185,6 @@ function renderConfigPending() {
   );
 }
 
-const CONFIRM_PAYMENT_SCRIPT = `
-const btn = document.getElementById('confirm');
-const stripe = Stripe(btn.dataset.publishableKey);
-const clientSecret = btn.dataset.clientSecret;
-const returnUrl = btn.dataset.returnUrl;
-const status = document.getElementById('status');
-btn.addEventListener('click', async () => {
-  btn.disabled = true;
-  status.textContent = 'Confirming…';
-  const { error, paymentIntent } = await stripe.confirmCardPayment(clientSecret);
-  if (error) {
-    status.textContent = error.message ?? 'Confirmation failed.';
-    btn.disabled = false;
-    return;
-  }
-  if (paymentIntent && paymentIntent.status === 'succeeded') {
-    window.location.href = returnUrl;
-    return;
-  }
-  status.textContent = 'Confirmation pending. We will email you when it completes.';
-});
-`.trim();
-
 function renderConfirmPaymentPage(args: {
   publishableKey: string;
   clientSecret: string;
@@ -244,7 +220,7 @@ function renderConfirmPaymentPage(args: {
           </CardContent>
         </Card>
       </ClientShell>
-      <script>{raw(CONFIRM_PAYMENT_SCRIPT)}</script>
+      <script src="/static/js/stripe-confirm.js" defer></script>
     </Layout>
   );
 }

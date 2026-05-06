@@ -12,7 +12,6 @@
  */
 
 import { Hono } from 'hono';
-import { raw } from 'hono/html';
 
 import {
   Alert,
@@ -28,41 +27,6 @@ import {
 } from '../../lib/ui/index.js';
 
 export const adminLoginRoute = new Hono();
-
-const SIGNIN_SCRIPT = `
-const btn = document.getElementById('signin');
-firebase.initializeApp({
-  apiKey: btn.dataset.apiKey,
-  authDomain: btn.dataset.authDomain,
-  projectId: btn.dataset.projectId,
-});
-const provider = new firebase.auth.GoogleAuthProvider();
-provider.setCustomParameters({ hd: 'intensivetherapyretreat.com' });
-const returnTo = btn.dataset.returnTo;
-const status = document.getElementById('status');
-btn.addEventListener('click', async () => {
-  status.textContent = 'Signing in…';
-  try {
-    const result = await firebase.auth().signInWithPopup(provider);
-    const idToken = await result.user.getIdToken();
-    const res = await fetch('/api/auth/session', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ idToken }),
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      status.textContent = 'Sign-in failed: ' + (data.error ?? res.status);
-      await firebase.auth().signOut().catch(() => {});
-      return;
-    }
-    await firebase.auth().signOut().catch(() => {});
-    window.location.href = returnTo;
-  } catch (err) {
-    status.textContent = err && err.message ? err.message : 'Sign-in failed.';
-  }
-});
-`.trim();
 
 function CenteredShell({ title, children }: { title: string; children: unknown }) {
   return (
@@ -180,7 +144,7 @@ adminLoginRoute.get('/login', (c) => {
           </p>
         </div>
       </div>
-      <script>{raw(SIGNIN_SCRIPT)}</script>
+      <script src="/static/js/firebase-signin.js" defer></script>
     </Layout>,
   );
 });

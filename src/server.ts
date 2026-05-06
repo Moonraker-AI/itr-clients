@@ -21,6 +21,7 @@ import { requireAuth } from './lib/auth.js';
 import { publicCheckoutRoute } from './routes/public/checkout.js';
 import { publicConsentsRoute } from './routes/public/consents.js';
 import { publicPaymentRoute } from './routes/public/payment.js';
+import { PREPAINT_THEME_SHA } from './lib/csp.js';
 import { log } from './lib/phi-redactor.js';
 import { clientIp, createRateLimiter } from './lib/rate-limit.js';
 import { parseTraceId, runWithTrace } from './lib/trace-context.js';
@@ -40,9 +41,15 @@ app.use('*', async (c, next) => {
 });
 
 // Standard hardening headers on every response (M9 fix #42 + #43).
-// CSP is intentionally permissive for our two specific external scripts
-// (Firebase JS SDK on /admin/login, Stripe.js on /c/:token/confirm-payment);
-// no other inline-script tag should be loading from elsewhere.
+// script-src drops 'unsafe-inline' (P2#14): every previously-inline script
+// has been moved to /static/js/*.js. The lone exception is the pre-paint
+// theme script in <head>, which must run sync before <body> parses to
+// avoid FOUC; it is pinned by SHA-256 hash so its exact byte sequence
+// (and only that one) is allowed inline.
+// style-src keeps 'unsafe-inline' because Tailwind's utility CSS landed
+// in the external bundle — but a few inline `style="..."` attrs (chiefly
+// on the logo `onerror` and the dynamically injected admin-shell button
+// states) are still in-tree. Tightening style-src is a follow-up.
 app.use('*', async (c, next) => {
   await next();
   c.header('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
@@ -59,7 +66,7 @@ app.use('*', async (c, next) => {
         "default-src 'self'",
         "img-src 'self' data:",
         "style-src 'self' 'unsafe-inline'",
-        "script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com https://js.stripe.com",
+        `script-src 'self' ${PREPAINT_THEME_SHA} https://www.gstatic.com https://apis.google.com https://js.stripe.com`,
         "connect-src 'self' https://*.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.gstatic.com https://apis.google.com https://api.stripe.com",
         "frame-src https://js.stripe.com https://*.stripe.com https://*.firebaseapp.com https://accounts.google.com",
         "frame-ancestors 'none'",
