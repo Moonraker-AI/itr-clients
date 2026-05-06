@@ -77,9 +77,10 @@ adminClientsNewRoute.get('/', async (c) => {
   return c.html(
     <Layout title="New client + retreat - ITR Clients">
       <AdminShell user={user} current="new">
-        <PageHeader title="New client + retreat" description="Create record and send the consent package." />
+        <div class="max-w-3xl mx-auto">
+          <PageHeader title="New client + retreat" description="Create record and send the consent package." />
 
-        <form method="post" class="space-y-6 max-w-2xl">
+          <form method="post" class="space-y-6">
           <CsrfInput token={csrfToken} />
 
           <Card>
@@ -213,7 +214,8 @@ adminClientsNewRoute.get('/', async (c) => {
               Create + send consent package
             </Button>
           </div>
-        </form>
+          </form>
+        </div>
       </AdminShell>
     </Layout>,
   );
