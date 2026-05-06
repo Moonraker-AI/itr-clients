@@ -69,6 +69,10 @@ adminClientsNewRoute.get('/', async (c) => {
 
   const csrfToken = ensureCsrfToken(c);
   const user = c.get('user');
+  const isTherapist = user?.role === 'therapist';
+  const selfTherapist = isTherapist
+    ? (therapistRows as TherapistOption[]).find((t) => t.id === user.therapistId)
+    : null;
 
   return c.html(
     <Layout title="New client + retreat — ITR Clients">
@@ -83,17 +87,32 @@ adminClientsNewRoute.get('/', async (c) => {
               <CardTitle>Therapist</CardTitle>
             </CardHeader>
             <CardContent>
-              <Field label="Therapist" for="therapist_id">
-                <Select id="therapist_id" name="therapist_id" required>
-                  <option value="">Select…</option>
-                  {(therapistRows as TherapistOption[]).map((t) => (
-                    <option value={t.id}>
-                      {t.fullName} ({formatCents(t.defaultFullDayCents)} /{' '}
-                      {t.defaultHalfDayCents == null ? '—' : formatCents(t.defaultHalfDayCents)})
-                    </option>
-                  ))}
-                </Select>
-              </Field>
+              {isTherapist && selfTherapist ? (
+                <>
+                  <input type="hidden" name="therapist_id" value={selfTherapist.id} />
+                  <div class="space-y-1">
+                    <div class="text-sm font-medium">{selfTherapist.fullName}</div>
+                    <div class="text-xs text-muted-foreground">
+                      {formatCents(selfTherapist.defaultFullDayCents)} full day
+                      {selfTherapist.defaultHalfDayCents != null
+                        ? ` · ${formatCents(selfTherapist.defaultHalfDayCents)} half day`
+                        : ''}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <Field label="Therapist" for="therapist_id">
+                  <Select id="therapist_id" name="therapist_id" required>
+                    <option value="">Select…</option>
+                    {(therapistRows as TherapistOption[]).map((t) => (
+                      <option value={t.id}>
+                        {t.fullName} ({formatCents(t.defaultFullDayCents)} /{' '}
+                        {t.defaultHalfDayCents == null ? '—' : formatCents(t.defaultHalfDayCents)})
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              )}
             </CardContent>
           </Card>
 
@@ -208,7 +227,13 @@ adminClientsNewRoute.post('/', async (c) => {
   const get = (k: string) => (form.get(k) as string | null) ?? '';
   const getNum = (k: string) => Number(form.get(k) ?? 0);
 
-  const therapistId = get('therapist_id');
+  // P2#16: when role=therapist, force therapist_id to the session's
+  // therapist regardless of submitted form value. Defense-in-depth so a
+  // therapist can't create retreats on behalf of another therapist by
+  // tampering with the hidden input.
+  const sessionUser = c.get('user');
+  const therapistId =
+    sessionUser?.role === 'therapist' ? sessionUser.therapistId : get('therapist_id');
   const firstName = get('first_name').trim();
   const lastName = get('last_name').trim();
   const email = get('email').trim().toLowerCase();
