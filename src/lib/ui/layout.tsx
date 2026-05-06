@@ -127,7 +127,7 @@ export const AdminShell: FC<AdminShellProps> = ({ user, current, children }) => 
     <div class="flex min-h-screen">
       <aside
         aria-label="Primary navigation"
-        class="hidden w-64 shrink-0 border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex md:flex-col"
+        class="hidden w-64 shrink-0 border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex md:flex-col md:sticky md:top-0 md:h-screen md:max-h-screen"
       >
         <a
           href="/admin"
