@@ -42,3 +42,23 @@ for (const entry of brandEntries) {
   await copyFile(resolve(brandSrc, entry.name), resolve(brandDst, entry.name));
   console.log(`brand: ${entry.name}`);
 }
+
+// JS --------------------------------------------------------------
+// Inline scripts moved to external files for CSP — drop 'unsafe-inline'.
+const jsSrc = resolve(root, 'src/assets/js');
+const jsDst = resolve(root, 'dist/static/js');
+await mkdir(jsDst, { recursive: true });
+
+let jsEntries = [];
+try {
+  jsEntries = await readdir(jsSrc, { withFileTypes: true });
+} catch {
+  // Folder absent — nothing to copy.
+}
+
+for (const entry of jsEntries) {
+  if (!entry.isFile()) continue;
+  if (extname(entry.name).toLowerCase() !== '.js') continue;
+  await copyFile(resolve(jsSrc, entry.name), resolve(jsDst, entry.name));
+  console.log(`js: ${entry.name}`);
+}

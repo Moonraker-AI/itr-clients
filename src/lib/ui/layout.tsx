@@ -1,19 +1,8 @@
 import type { FC, PropsWithChildren } from 'hono/jsx';
 import { raw } from 'hono/html';
 
+import { PREPAINT_THEME } from '../csp.js';
 import type { Theme } from './theme.js';
-
-/** Pre-paint script: applies theme class before <body> renders to avoid FOUC.
- * Reads `theme` cookie first, falls back to system prefers-color-scheme. */
-const PREPAINT_THEME = `
-(function(){
-  try {
-    var m = document.cookie.match(/(?:^|; )theme=(light|dark)/);
-    var t = m ? m[1] : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-    if (t === 'dark') document.documentElement.classList.add('dark');
-  } catch (e) {}
-})();
-`.trim();
 
 const FAVICON_LINKS = (
   <>
@@ -108,56 +97,6 @@ const LOGO_MARK = (
   />
 );
 
-const SHELL_SCRIPT = `
-(function(){
-  var t = document.getElementById('theme-toggle');
-  if (t) {
-    t.addEventListener('click', function(){
-      var dark = document.documentElement.classList.toggle('dark');
-      var v = dark ? 'dark' : 'light';
-      var oneYear = 60 * 60 * 24 * 365;
-      document.cookie = 'theme=' + v + '; path=/; max-age=' + oneYear + '; samesite=lax';
-    });
-  }
-  var s = document.getElementById('sign-out');
-  if (s) {
-    s.addEventListener('click', async function(e){
-      e.preventDefault();
-      try {
-        await fetch('/api/auth/logout', { method: 'POST' });
-      } catch (_) {}
-      window.location.href = '/admin/login';
-    });
-  }
-  // Row-link delegation: <tr data-href="..."> becomes fully clickable.
-  // Honors cmd/ctrl/middle-click for new tab. Ignores clicks on a/button/input
-  // so nested controls keep their own behavior.
-  document.addEventListener('click', function(e){
-    var target = e.target;
-    if (!(target instanceof Element)) return;
-    if (target.closest('a, button, input, label, select, textarea')) return;
-    var row = target.closest('tr[data-href]');
-    if (!row) return;
-    var href = row.getAttribute('data-href');
-    if (!href) return;
-    if (e.metaKey || e.ctrlKey || e.button === 1) {
-      window.open(href, '_blank');
-    } else {
-      window.location.assign(href);
-    }
-  });
-  document.addEventListener('auxclick', function(e){
-    if (e.button !== 1) return;
-    var target = e.target;
-    if (!(target instanceof Element)) return;
-    if (target.closest('a, button, input, label, select, textarea')) return;
-    var row = target.closest('tr[data-href]');
-    if (!row) return;
-    var href = row.getAttribute('data-href');
-    if (href) window.open(href, '_blank');
-  });
-})();
-`.trim();
 
 const ICON_BTN_CLASS =
   'inline-flex items-center justify-center h-9 w-9 rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background';
@@ -246,7 +185,7 @@ export const AdminShell: FC<AdminShellProps> = ({ user, current, children }) => 
         </header>
         <div class="px-6 py-8 max-w-6xl mx-auto">{children}</div>
       </main>
-      <script>{raw(SHELL_SCRIPT)}</script>
+      <script src="/static/js/admin-shell.js" defer></script>
     </div>
   );
 };
