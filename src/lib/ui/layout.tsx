@@ -51,14 +51,26 @@ export const Layout: FC<LayoutProps> = ({ title, head, theme, scripts, children 
 };
 
 type AdminShellProps = PropsWithChildren<{
-  user?: { email?: string | null; name?: string | null };
+  user?: {
+    email?: string | null;
+    name?: string | null;
+    role?: 'admin' | 'therapist';
+  };
   current?: string;
 }>;
 
-const NAV: Array<{ href: string; label: string; match: string }> = [
+interface NavItem {
+  href: string;
+  label: string;
+  match: string;
+  /** True when only admins (not therapists) should see this nav entry. */
+  adminOnly?: boolean;
+}
+
+const NAV: NavItem[] = [
   { href: '/admin', label: 'Dashboard', match: 'dashboard' },
   { href: '/admin/clients/new', label: 'New Client', match: 'new' },
-  { href: '/admin/pricing', label: 'Pricing', match: 'pricing' },
+  { href: '/admin/pricing', label: 'Pricing', match: 'pricing', adminOnly: true },
 ];
 
 const SUN_ICON = (
@@ -129,7 +141,7 @@ export const AdminShell: FC<AdminShellProps> = ({ user, current, children }) => 
         </a>
 
         <nav class="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {NAV.map((item) => {
+          {NAV.filter((item) => !item.adminOnly || user?.role === 'admin').map((item) => {
             const active = current === item.match;
             return (
               <a

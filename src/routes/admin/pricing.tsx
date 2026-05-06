@@ -48,6 +48,10 @@ type Row = {
 };
 
 adminPricingRoute.get('/', async (c) => {
+  // P2#16: pricing is global config — admin-only.
+  const user = c.get('user');
+  if (user?.role !== 'admin') return c.notFound();
+
   const { db } = await getDb();
 
   const rows = await db
@@ -71,7 +75,6 @@ adminPricingRoute.get('/', async (c) => {
 
   const ach = config ? Number(config.achDiscountPct) : 0.03;
   const csrfToken = ensureCsrfToken(c);
-  const user = c.get('user');
   const pctStr = (ach * 100).toFixed(2);
 
   return c.html(
@@ -154,6 +157,10 @@ adminPricingRoute.get('/', async (c) => {
 });
 
 adminPricingRoute.post('/ach-discount', async (c) => {
+  // P2#16: only admins edit global pricing config.
+  const user = c.get('user');
+  if (user?.role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+
   const form = await c.req.formData();
   if (!verifyCsrfToken(c, String(form.get('_csrf') ?? ''))) {
     return c.json({ error: 'csrf_mismatch' }, 403);
