@@ -21,13 +21,15 @@ required checks + PR rule. The protection is theatre for non-admins only.
 Enable admin enforcement so the rules apply to everyone, including the
 account that owns the repo:
 
+Run each on a single line — bash backslash-line-continuation breaks if you
+paste across multiple lines and the `\` lands as a literal arg.
+
 ```bash
-# One-liner to enforce admins
+# Enforce admin compliance
 gh api -X POST repos/Moonraker-AI/itr-clients/branches/main/protection/enforce_admins
 
-# Verify
-gh api repos/Moonraker-AI/itr-clients/branches/main/protection \
-  --jq '.enforce_admins.enabled'
+# Verify (single line)
+gh api repos/Moonraker-AI/itr-clients/branches/main/protection --jq '.enforce_admins.enabled'
 # → true
 ```
 
@@ -52,11 +54,11 @@ gh api -X DELETE repos/Moonraker-AI/itr-clients/branches/main/protection/enforce
 
 ## Optional: require a reviewer
 
-You're solo right now. When the team grows, raise the review threshold:
+You're solo right now. When the team grows, raise the review threshold.
+Run on a single line:
 
 ```bash
-gh api -X PATCH repos/Moonraker-AI/itr-clients/branches/main/protection \
-  -F required_pull_request_reviews[required_approving_review_count]=1
+gh api -X PATCH repos/Moonraker-AI/itr-clients/branches/main/protection -F required_pull_request_reviews[required_approving_review_count]=1
 ```
 
 ## Why this matters
