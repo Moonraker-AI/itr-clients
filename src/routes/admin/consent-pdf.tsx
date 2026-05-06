@@ -1,24 +1,31 @@
 /**
  * /admin/clients/:id/consents/:signatureId/pdf
  *
- * Returns a 302 to a short-lived GCS v4 signed URL for the signed PDF.
- * Auth-gated by the admin requireAuth middleware + therapistCanAccess
- * to ensure therapists can only fetch their own clients' PDFs.
+ * Streams the signed PDF directly through the app server. Avoids the
+ * IAM `iam.serviceAccounts.signBlob` permission a v4 signed URL would
+ * need; the runtime SA already has read access to the bucket via its
+ * normal Storage permissions, and we proxy the bytes.
  *
- * The signed URL is single-use-ish (5 min TTL) — don't log it. Audit
- * the access via audit_events so we have a record of who pulled what.
+ * Auth-gated by the admin requireAuth middleware + therapistCanAccess
+ * so therapists only see their own clients' PDFs. Every access writes
+ * `admin_consent_pdf_accessed` to audit_events.
+ *
+ * Bandwidth: consent PDFs are ~100–500 KB each, low volume (one per
+ * signed consent per access). Acceptable to proxy through Cloud Run.
  */
 
 import { Hono } from 'hono';
+import { Storage } from '@google-cloud/storage';
 import { and, eq } from 'drizzle-orm';
 
 import { getDb } from '../../db/client.js';
 import { auditEvents, consentSignatures, retreats } from '../../db/schema.js';
 import { therapistCanAccess } from '../../lib/auth.js';
 import { log } from '../../lib/phi-redactor.js';
-import { getSignedDownloadUrl } from '../../lib/storage.js';
 
 export const adminConsentPdfRoute = new Hono();
+
+let storage: Storage | null = null;
 
 adminConsentPdfRoute.get('/:id/consents/:signatureId/pdf', async (c) => {
   const id = c.req.param('id');
@@ -47,19 +54,34 @@ adminConsentPdfRoute.get('/:id/consents/:signatureId/pdf', async (c) => {
     return c.json({ error: 'pdf_not_yet_uploaded' }, 404);
   }
 
-  let url: string;
+  const m = sig.pdfStoragePath.match(/^gs:\/\/([^/]+)\/(.+)$/);
+  if (!m) {
+    log.error('admin_consent_pdf_bad_storage_path', {
+      retreatId: id,
+      signatureId,
+      storagePath: sig.pdfStoragePath,
+    });
+    return c.json({ error: 'invalid_storage_path' }, 500);
+  }
+  const [, bucketName, objectName] = m;
+
+  let buf: Buffer;
   try {
-    url = await getSignedDownloadUrl({ storagePath: sig.pdfStoragePath });
+    storage ??= new Storage();
+    const [downloaded] = await storage
+      .bucket(bucketName!)
+      .file(objectName!)
+      .download();
+    buf = downloaded;
   } catch (err) {
-    log.error('admin_consent_pdf_signed_url_failed', {
+    log.error('admin_consent_pdf_download_failed', {
       retreatId: id,
       signatureId,
       error: (err as Error).message,
     });
-    return c.json({ error: 'signed_url_generation_failed' }, 500);
+    return c.json({ error: 'pdf_download_failed' }, 500);
   }
 
-  // Audit the access. Don't include the URL itself (it's a fresh credential).
   await db
     .insert(auditEvents)
     .values({
@@ -80,5 +102,11 @@ adminConsentPdfRoute.get('/:id/consents/:signatureId/pdf', async (c) => {
       });
     });
 
-  return c.redirect(url);
+  c.header('Content-Type', 'application/pdf');
+  c.header(
+    'Content-Disposition',
+    `inline; filename="consent-${signatureId.slice(0, 8)}.pdf"`,
+  );
+  c.header('Cache-Control', 'private, max-age=0, no-store');
+  return c.body(buf as unknown as ArrayBuffer);
 });
