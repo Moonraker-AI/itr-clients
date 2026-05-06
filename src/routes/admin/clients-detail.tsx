@@ -163,6 +163,13 @@ adminClientsDetailRoute.get('/:id', async (c) => {
           <LinkButton href="/admin" variant="ghost" size="sm">
             ← Dashboard
           </LinkButton>
+          <LinkButton
+            href={`/admin/clients/${row.retreatId}/export.json`}
+            variant="outline"
+            size="sm"
+          >
+            Export
+          </LinkButton>
           <LinkButton href={`/admin/clients/${row.retreatId}/refund`} variant="outline" size="sm">
             Refund
           </LinkButton>
