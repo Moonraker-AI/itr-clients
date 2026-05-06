@@ -19,6 +19,8 @@ type InputProps = {
   max?: string | number | undefined;
   step?: string | number | undefined;
   class?: string | undefined;
+  /** HTML5 form-association attribute. */
+  form?: string | undefined;
 };
 
 const BASE =

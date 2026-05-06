@@ -39,6 +39,8 @@ type ButtonProps = PropsWithChildren<{
   name?: string;
   value?: string;
   disabled?: boolean;
+  /** HTML5 form-association attribute. */
+  form?: string;
   /** Pass-through data-* attrs. */
   data?: Record<string, string>;
 }>;

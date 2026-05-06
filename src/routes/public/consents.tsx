@@ -306,34 +306,84 @@ publicConsentsRoute.get('/:token/view/:templateName', async (c) => {
         </Card>
 
         {sig ? (
-          <Card class="mb-6">
-            <CardHeader>
-              <CardTitle>Signature</CardTitle>
-            </CardHeader>
-            <CardContent class="space-y-3">
-              <dl class="grid grid-cols-[140px_1fr] gap-y-1.5 text-sm">
-                <dt class="text-muted-foreground">Signed by</dt>
-                <dd class="font-medium">{sig.signedName}</dd>
-                <dt class="text-muted-foreground">Date</dt>
-                <dd>{sig.signedAt.toISOString().slice(0, 10)}</dd>
-                <dt class="text-muted-foreground">Method</dt>
-                <dd class="text-sm">
-                  {sigMethod === 'drawn' ? 'Drawn signature' : 'Typed attestation (ESIGN Act)'}
-                </dd>
-              </dl>
-              {sigDataUrl ? (
-                <img
-                  src={sigDataUrl}
-                  alt={`Signature of ${sig.signedName}`}
-                  class="border border-input rounded-md bg-white max-w-md"
-                />
-              ) : (
-                <p class="text-sm text-muted-foreground italic">
-                  No drawn signature on file. Typed attestation recorded.
-                </p>
-              )}
-            </CardContent>
-          </Card>
+          <>
+            <Card class="mb-6">
+              <CardHeader>
+                <CardTitle>Your responses</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <dl class="grid grid-cols-1 sm:grid-cols-[260px_1fr] gap-y-3 gap-x-4 text-sm">
+                  {(() => {
+                    let fields: TemplateRequiredField[];
+                    try {
+                      fields = (
+                        getTemplate(templateName).meta.requiredFields ?? []
+                      ).filter((f) => f.kind !== 'signature');
+                    } catch {
+                      return null;
+                    }
+                    if (fields.length === 0) {
+                      return (
+                        <dd class="text-muted-foreground italic">No fields on this form.</dd>
+                      );
+                    }
+                    return fields.map((f) => {
+                      const raw = evidence[f.key];
+                      const display =
+                        raw == null || raw === ''
+                          ? '(not answered)'
+                          : Array.isArray(raw)
+                            ? raw.join(', ')
+                            : String(raw);
+                      return (
+                        <>
+                          <dt class="text-muted-foreground">{f.label}</dt>
+                          <dd
+                            class={
+                              raw == null || raw === ''
+                                ? 'italic text-muted-foreground'
+                                : 'whitespace-pre-wrap break-words'
+                            }
+                          >
+                            {display}
+                          </dd>
+                        </>
+                      );
+                    });
+                  })()}
+                </dl>
+              </CardContent>
+            </Card>
+
+            <Card class="mb-6">
+              <CardHeader>
+                <CardTitle>Signature</CardTitle>
+              </CardHeader>
+              <CardContent class="space-y-3">
+                <dl class="grid grid-cols-[140px_1fr] gap-y-1.5 text-sm">
+                  <dt class="text-muted-foreground">Signed by</dt>
+                  <dd class="font-medium">{sig.signedName}</dd>
+                  <dt class="text-muted-foreground">Date</dt>
+                  <dd>{sig.signedAt.toISOString().slice(0, 10)}</dd>
+                  <dt class="text-muted-foreground">Method</dt>
+                  <dd class="text-sm">
+                    {sigMethod === 'drawn' ? 'Drawn signature' : 'Typed attestation (ESIGN Act)'}
+                  </dd>
+                </dl>
+                {sigDataUrl ? (
+                  <img
+                    src={sigDataUrl}
+                    alt={`Signature of ${sig.signedName}`}
+                    class="border border-input rounded-md bg-white max-w-md"
+                  />
+                ) : (
+                  <p class="text-sm text-muted-foreground italic">
+                    No drawn signature on file. Typed attestation recorded.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </>
         ) : null}
 
         <LinkButton href={`/c/${token}`} variant="outline">

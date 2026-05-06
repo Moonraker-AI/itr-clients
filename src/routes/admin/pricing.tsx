@@ -90,6 +90,22 @@ adminPricingRoute.get('/', async (c) => {
             </CardDescription>
           </CardHeader>
           <CardContent class="px-0">
+            {/* HTML5 `form` attribute lets each row's inputs reference a
+                separate <form> element rendered outside the table. Keeps the
+                per-column alignment intact while still scoping submits. */}
+            <div class="hidden">
+              {(rows as Row[]).map((t) => (
+                <form
+                  id={`t-${t.slug}`}
+                  method="post"
+                  action="/admin/pricing/therapist"
+                >
+                  <CsrfInput token={csrfToken} />
+                  <input type="hidden" name="slug" value={t.slug} />
+                </form>
+              ))}
+            </div>
+
             <Table>
               <Thead>
                 <Tr>
@@ -108,41 +124,46 @@ adminPricingRoute.get('/', async (c) => {
                     <Td class="font-medium">{t.fullName}</Td>
                     <Td class="text-muted-foreground text-sm">{t.role}</Td>
                     <Td class="text-sm">{t.locationName ?? '-'}</Td>
-                    <Td colspan={4} class="px-0">
-                      <form
-                        method="post"
-                        action="/admin/pricing/therapist"
-                        class="flex items-center justify-end gap-2 px-3"
+                    <Td class="text-right">
+                      <Input
+                        form={`t-${t.slug}`}
+                        name="full_day_dollars"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={(t.fullDay / 100).toFixed(2)}
+                        required
+                        class="w-28 text-right inline-block"
+                      />
+                    </Td>
+                    <Td class="text-right">
+                      <Input
+                        form={`t-${t.slug}`}
+                        name="half_day_dollars"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={t.halfDay == null ? '' : (t.halfDay / 100).toFixed(2)}
+                        placeholder="-"
+                        class="w-28 text-right inline-block"
+                      />
+                    </Td>
+                    <Td>
+                      {t.active ? (
+                        <Badge variant="success">yes</Badge>
+                      ) : (
+                        <Badge variant="secondary">no</Badge>
+                      )}
+                    </Td>
+                    <Td>
+                      <Button
+                        form={`t-${t.slug}`}
+                        type="submit"
+                        size="sm"
+                        variant="outline"
                       >
-                        <CsrfInput token={csrfToken} />
-                        <input type="hidden" name="slug" value={t.slug} />
-                        <Input
-                          name="full_day_dollars"
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={(t.fullDay / 100).toFixed(2)}
-                          required
-                          class="w-28 text-right"
-                        />
-                        <Input
-                          name="half_day_dollars"
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={t.halfDay == null ? '' : (t.halfDay / 100).toFixed(2)}
-                          placeholder="-"
-                          class="w-28 text-right"
-                        />
-                        {t.active ? (
-                          <Badge variant="success">yes</Badge>
-                        ) : (
-                          <Badge variant="secondary">no</Badge>
-                        )}
-                        <Button type="submit" size="sm" variant="outline">
-                          Save
-                        </Button>
-                      </form>
+                        Save
+                      </Button>
                     </Td>
                   </Tr>
                 ))}
