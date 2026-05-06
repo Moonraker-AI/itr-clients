@@ -1,5 +1,5 @@
 /**
- * /admin/clients/:id/refund — partial or full refund of a prior payment (M7).
+ * /admin/clients/:id/refund - partial or full refund of a prior payment (M7).
  */
 
 import { Hono } from 'hono';
@@ -79,7 +79,7 @@ adminRefundRoute.get('/:id/refund', async (c) => {
   const filtered = refundable.filter((p) => p.kind !== 'refund');
 
   return c.html(
-    <Layout title="Refund — ITR Clients">
+    <Layout title="Refund - ITR Clients">
       <AdminShell user={user} current="dashboard">
         <PageHeader title="Refund" description={`${clientName} · ${id.slice(0, 8)}`}>
           <Badge variant="secondary">{r.state}</Badge>
@@ -130,7 +130,7 @@ adminRefundRoute.get('/:id/refund', async (c) => {
                 <Field
                   label="Reason note"
                   for="reason_note"
-                  hint="Internal — never sent to Stripe metadata. ≤200 chars."
+                  hint="Internal - never sent to Stripe metadata. ≤200 chars."
                 >
                   <Textarea
                     id="reason_note"

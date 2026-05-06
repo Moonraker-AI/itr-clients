@@ -1,5 +1,5 @@
 /**
- * /admin — list view of all retreats with state + therapist filters (M7).
+ * /admin - list view of all retreats with state + therapist filters (M7).
  *
  * Query params:
  *   ?state=<state>             single state filter
@@ -63,7 +63,7 @@ adminDashboardRoute.get('/', async (c) => {
   // and surface as a database-level error.
   const therapistFilter = UUID_RE.test(therapistFilterRaw) ? therapistFilterRaw : '';
 
-  // NaN guards — Number("not-a-num") is NaN; coerce to defaults.
+  // NaN guards - Number("not-a-num") is NaN; coerce to defaults.
   const limitRaw = Number(c.req.query('limit') ?? DEFAULT_LIMIT);
   const offsetRaw = Number(c.req.query('offset') ?? 0);
   const limit = Number.isFinite(limitRaw)
@@ -149,7 +149,7 @@ adminDashboardRoute.get('/', async (c) => {
   };
 
   return c.html(
-    <Layout title="Dashboard — ITR Clients">
+    <Layout title="Dashboard - ITR Clients">
       <AdminShell user={user} current="dashboard">
         <PageHeader title="Retreats" description={`${rows.length} of ${total} · offset ${offset}`}>
           <LinkButton href="/admin/clients/new" size="sm">
@@ -215,7 +215,7 @@ adminDashboardRoute.get('/', async (c) => {
                 const dates =
                   r.scheduledStartDate && r.scheduledEndDate
                     ? `${r.scheduledStartDate} → ${r.scheduledEndDate}`
-                    : '—';
+                    : '-';
                 const totalLabel = r.totalActualCents
                   ? `${formatCents(r.totalActualCents)}`
                   : `${formatCents(r.totalPlannedCents)}`;

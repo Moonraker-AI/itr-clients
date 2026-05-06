@@ -1,12 +1,12 @@
 /**
- * /admin/clients/:id/export.json — HIPAA right-of-access JSON dump.
+ * /admin/clients/:id/export.json - HIPAA right-of-access JSON dump.
  *
  * Returns the full server-side data we hold about a single retreat:
  * client + retreat + payments + signed consents (with GCS storage paths)
  * + audit_events + email_log. The client receives this on request as a
  * machine-readable export.
  *
- * PDFs are NOT bundled — they live in GCS and are referenced by storage
+ * PDFs are NOT bundled - they live in GCS and are referenced by storage
  * path. Operator can fetch them via:
  *   gsutil cp gs://<bucket>/<path> ./
  *
@@ -81,7 +81,7 @@ adminExportRoute.get('/:id/export.json', async (c) => {
     .where(eq(consentSignatures.retreatId, id))
     .orderBy(asc(consentSignatures.signedAt));
 
-  // Audit log — every transition + admin action is in here.
+  // Audit log - every transition + admin action is in here.
   const audits = await db
     .select()
     .from(auditEvents)
@@ -95,7 +95,7 @@ adminExportRoute.get('/:id/export.json', async (c) => {
     .orderBy(desc(emailLog.sentAt));
 
   // Record the export itself in audit_events so there's a paper trail.
-  // Don't include the export contents in the audit payload — only who +
+  // Don't include the export contents in the audit payload - only who +
   // when. The state-machine is unchanged (no transition).
   await db
     .insert(auditEvents)
@@ -145,7 +145,7 @@ adminExportRoute.get('/:id/export.json', async (c) => {
     signatures: signatures.map((s) => ({
       ...s,
       // PDFs live in GCS; expose the storage path so the operator can
-      // fetch them via gsutil. Don't sign URLs here — the JSON dump is
+      // fetch them via gsutil. Don't sign URLs here - the JSON dump is
       // long-lived and signed URLs expire.
       pdf_gcs_path: s.pdfStoragePath ?? null,
     })),

@@ -1,5 +1,5 @@
 /**
- * /admin/clients/new — create client + retreat + send consent package.
+ * /admin/clients/new - create client + retreat + send consent package.
  *
  * GET   renders a single-page JSX form (no JS dependency).
  * POST  validates input, snapshots pricing onto the retreat, generates the
@@ -75,7 +75,7 @@ adminClientsNewRoute.get('/', async (c) => {
     : null;
 
   return c.html(
-    <Layout title="New client + retreat — ITR Clients">
+    <Layout title="New client + retreat - ITR Clients">
       <AdminShell user={user} current="new">
         <PageHeader title="New client + retreat" description="Create record and send the consent package." />
 
@@ -107,7 +107,7 @@ adminClientsNewRoute.get('/', async (c) => {
                     {(therapistRows as TherapistOption[]).map((t) => (
                       <option value={t.id}>
                         {t.fullName} ({formatCents(t.defaultFullDayCents)} /{' '}
-                        {t.defaultHalfDayCents == null ? '—' : formatCents(t.defaultHalfDayCents)})
+                        {t.defaultHalfDayCents == null ? '-' : formatCents(t.defaultHalfDayCents)})
                       </option>
                     ))}
                   </Select>
@@ -202,7 +202,7 @@ adminClientsNewRoute.get('/', async (c) => {
                   <Input id="override_half_day" name="override_half_day" type="number" min="0" step="0.01" />
                 </Field>
               </div>
-              <Field label="Pricing notes" for="pricing_notes" hint="Internal — never rendered client-side.">
+              <Field label="Pricing notes" for="pricing_notes" hint="Internal - never rendered client-side.">
                 <Textarea id="pricing_notes" name="pricing_notes" rows={3} />
               </Field>
             </CardContent>
@@ -251,7 +251,7 @@ adminClientsNewRoute.post('/', async (c) => {
   if (!therapistId || !firstName || !lastName || !email) {
     return c.json({ error: 'missing_required_fields' }, 400);
   }
-  // Audit tier-10 — defensive bounds on free-text fields. clients.* columns
+  // Audit tier-10 - defensive bounds on free-text fields. clients.* columns
   // are TEXT (unbounded); without a cap a typo or a paste accident could
   // insert a megabyte of text.
   const FIELD_CAPS = {

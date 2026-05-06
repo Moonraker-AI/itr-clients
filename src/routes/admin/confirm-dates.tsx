@@ -1,5 +1,5 @@
 /**
- * /admin/clients/:id/confirm-dates — therapist date-confirmation form (M4).
+ * /admin/clients/:id/confirm-dates - therapist date-confirmation form (M4).
  */
 
 import { Hono } from 'hono';
@@ -65,7 +65,7 @@ adminConfirmDatesRoute.get('/:id/confirm-dates', async (c) => {
   const clientName = `${row.clientFirstName} ${row.clientLastName}`;
 
   return c.html(
-    <Layout title="Confirm dates — ITR Clients">
+    <Layout title="Confirm dates - ITR Clients">
       <AdminShell user={user} current="dashboard">
         <PageHeader title="Confirm retreat dates" description={`${clientName} · ${id.slice(0, 8)}`}>
           <LinkButton href={`/admin/clients/${id}`} variant="ghost" size="sm">
@@ -78,7 +78,7 @@ adminConfirmDatesRoute.get('/:id/confirm-dates', async (c) => {
             <Alert variant="destructive">
               <AlertTitle>Wrong state</AlertTitle>
               <AlertDescription>
-                State is <code class="font-mono">{row.state}</code> — only{' '}
+                State is <code class="font-mono">{row.state}</code> - only{' '}
                 <code class="font-mono">awaiting_deposit</code> can confirm dates.
               </AlertDescription>
             </Alert>

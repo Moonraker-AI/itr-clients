@@ -51,6 +51,18 @@ export const Th: FC<Props> = ({ class: className, children }) => (
   </th>
 );
 
-export const Td: FC<Props> = ({ class: className, children }) => (
-  <td class={cn('px-3 py-3 align-middle', className)}>{children}</td>
+type CellProps = PropsWithChildren<{
+  class?: string | undefined;
+  colspan?: number | undefined;
+  rowspan?: number | undefined;
+}>;
+
+export const Td: FC<CellProps> = ({ class: className, colspan, rowspan, children }) => (
+  <td
+    class={cn('px-3 py-3 align-middle', className)}
+    colspan={colspan}
+    rowspan={rowspan}
+  >
+    {children}
+  </td>
 );

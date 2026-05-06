@@ -1,12 +1,12 @@
 /**
- * Public client surface — token-gated, no auth (DESIGN.md §10).
+ * Public client surface - token-gated, no auth (DESIGN.md §10).
  *
  *   GET  /c/:token                 status / "what's next"
  *   GET  /c/:token/consents        next unsigned required template
  *   POST /c/:token/consents        record signature, render PDF, advance
  *
  * Token leakage protection:
- *   - Routes return 404 (not 403) for unknown tokens — no probing oracle.
+ *   - Routes return 404 (not 403) for unknown tokens - no probing oracle.
  *   - The token never appears in audit_event payloads or email_log.
  */
 
@@ -156,7 +156,7 @@ publicConsentsRoute.get('/:token', async (c) => {
         </LinkButton>
       ) : (
         <p class="text-sm text-muted-foreground">
-          All consents are signed. We are preparing your deposit checkout — you will receive a follow-up
+          All consents are signed. We are preparing your deposit checkout - you will receive a follow-up
           email.
         </p>
       );
@@ -182,7 +182,7 @@ publicConsentsRoute.get('/:token', async (c) => {
   }
 
   return c.html(
-    <Layout title="Your retreat — Intensive Therapy Retreats">
+    <Layout title="Your retreat - Intensive Therapy Retreats">
       <ClientShell>
         <h1 class="text-2xl font-semibold tracking-tight mb-2">Hi {ctx.clientFirstName},</h1>
         <p class="text-muted-foreground mb-6">
@@ -232,7 +232,7 @@ publicConsentsRoute.get('/:token', async (c) => {
 /** Read-only view of any consent template attached to this retreat.
  * Used for informational templates (Notice of Privacy Practices) and to
  * let clients re-read a signed document at any time. No form, no submit.
- * Returns 404 if the template isn't attached to this retreat — keeps
+ * Returns 404 if the template isn't attached to this retreat - keeps
  * the route from acting as a generic content-discovery oracle. */
 publicConsentsRoute.get('/:token/view/:templateName', async (c) => {
   const token = c.req.param('token');
@@ -292,7 +292,7 @@ publicConsentsRoute.get('/:token/view/:templateName', async (c) => {
   const bodyHtml = marked.parse(substituted, { async: false }) as string;
 
   return c.html(
-    <Layout title={`${title} — Intensive Therapy Retreats`}>
+    <Layout title={`${title} - Intensive Therapy Retreats`}>
       <ClientShell width="xl">
         <h1 class="text-2xl font-semibold tracking-tight mb-2">{title}</h1>
         <p class="text-sm text-muted-foreground mb-4">
@@ -361,7 +361,7 @@ publicConsentsRoute.get('/:token/consents', async (c) => {
   const bodyHtml = marked.parse(substituted, { async: false }) as string;
 
   return c.html(
-    <Layout title={`${next.title} — Intensive Therapy Retreats`}>
+    <Layout title={`${next.title} - Intensive Therapy Retreats`}>
       <ClientShell width="xl">
         <h1 class="text-2xl font-semibold tracking-tight mb-2">{next.title}</h1>
         <p class="text-sm text-muted-foreground mb-4">
@@ -443,7 +443,7 @@ publicConsentsRoute.post(
     const attestationTyped = get('attestation_typed') === 'yes';
     // a11y P2#12: typed-attestation alternative for users who can't use the
     // canvas pad. Either drawn signature OR (typed name + attest checkbox)
-    // satisfies requires_signature. ESIGN-Act-style — typed name + audit
+    // satisfies requires_signature. ESIGN-Act-style - typed name + audit
     // trail (IP, UA, timestamp, evidence_blob) is a valid e-sig.
     if (next.requiresSignature) {
       if (!signedName) {
@@ -480,6 +480,32 @@ publicConsentsRoute.post(
       })
       .returning({ id: consentSignatures.id });
     if (!sig) throw new Error('signature insert failed');
+
+    // Audit per individual signing (separate from the bulk
+    // `consents_signed` event the state-machine writes only when the LAST
+    // required signature lands). Gives admins a per-document trail.
+    // PHI-clean payload: template + version + signature_id + method, no
+    // names/IPs (those live on consent_signatures already).
+    await db
+      .insert(auditEvents)
+      .values({
+        retreatId: ctx.retreatId,
+        actorType: 'client',
+        actorId: null,
+        eventType: 'consent_signed',
+        payload: {
+          template_name: next.name,
+          template_version: next.version,
+          signature_id: sig.id,
+          signature_method: signatureDataUrl ? 'drawn' : 'typed',
+        },
+      })
+      .catch((err: unknown) => {
+        log.warn('consent_signed_audit_failed', {
+          retreatId: ctx.retreatId,
+          error: (err as Error).message,
+        });
+      });
 
     try {
       const intakeAnswers: IntakeAnswer[] = next.requiredFields
@@ -656,7 +682,7 @@ function FieldFromTemplate({ field: f }: { field: TemplateRequiredField }) {
       return (
         <Field label={f.label} for={id}>
           <Select id={id} name={f.key} required={f.required}>
-            <option value="">—</option>
+            <option value="">-</option>
             <option value="yes">Yes</option>
             <option value="no">No</option>
           </Select>

@@ -1,5 +1,5 @@
 /**
- * /admin/clients/:id/cancel — therapist cancellation form (M9 cleanup #34).
+ * /admin/clients/:id/cancel - therapist cancellation form (M9 cleanup #34).
  */
 
 import { Hono } from 'hono';
@@ -65,7 +65,7 @@ adminCancelRoute.get('/:id/cancel', async (c) => {
   const blockedState = row.state === 'completed' || row.state === 'cancelled';
 
   return c.html(
-    <Layout title="Cancel retreat — ITR Clients">
+    <Layout title="Cancel retreat - ITR Clients">
       <AdminShell user={user} current="dashboard">
         <PageHeader title="Cancel retreat" description={`${clientName} · ${id.slice(0, 8)}`}>
           <Badge variant="secondary">{row.state}</Badge>
@@ -79,7 +79,7 @@ adminCancelRoute.get('/:id/cancel', async (c) => {
             <Alert variant="destructive">
               <AlertTitle>State blocks cancel</AlertTitle>
               <AlertDescription>
-                State is <code class="font-mono">{row.state}</code> — cancel is only valid before
+                State is <code class="font-mono">{row.state}</code> - cancel is only valid before
                 completion.
               </AlertDescription>
             </Alert>
@@ -95,7 +95,7 @@ adminCancelRoute.get('/:id/cancel', async (c) => {
               <CardTitle>Cancel</CardTitle>
               <CardDescription>
                 Moves retreat to <code class="font-mono">cancelled</code> and emails support + the
-                assigned therapist. Refunds handled separately on the Refund form — process those first
+                assigned therapist. Refunds handled separately on the Refund form - process those first
                 if you want them recorded.
               </CardDescription>
             </CardHeader>

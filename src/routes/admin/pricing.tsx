@@ -1,5 +1,5 @@
 /**
- * /admin/pricing — read existing per-therapist rates + edit ach_discount_pct.
+ * /admin/pricing - read existing per-therapist rates + edit ach_discount_pct.
  *
  * Auth: gated behind the M8 requireAuth middleware. CSRF protected via
  * the double-submit cookie + hidden input pattern (lib/csrf.ts).
@@ -48,7 +48,7 @@ type Row = {
 };
 
 adminPricingRoute.get('/', async (c) => {
-  // P2#16: pricing is global config — admin-only.
+  // P2#16: pricing is global config - admin-only.
   const user = c.get('user');
   if (user?.role !== 'admin') return c.notFound();
 
@@ -78,7 +78,7 @@ adminPricingRoute.get('/', async (c) => {
   const pctStr = (ach * 100).toFixed(2);
 
   return c.html(
-    <Layout title="Pricing — ITR Clients">
+    <Layout title="Pricing - ITR Clients">
       <AdminShell user={user} current="pricing">
         <PageHeader title="Pricing" description="Per-therapist rates and ACH discount config." />
 
@@ -86,7 +86,7 @@ adminPricingRoute.get('/', async (c) => {
           <CardHeader>
             <CardTitle>Per-therapist rates</CardTitle>
             <CardDescription>
-              Authoritatively set by the seed script (DESIGN.md §4). Rate changes go through code review.
+              Edit full-day and half-day defaults inline. Existing retreats keep their snapshotted rates; only future retreats inherit the new defaults.
             </CardDescription>
           </CardHeader>
           <CardContent class="px-0">
@@ -96,9 +96,10 @@ adminPricingRoute.get('/', async (c) => {
                   <Th>Therapist</Th>
                   <Th>Role</Th>
                   <Th>Location</Th>
-                  <Th class="text-right">Full day</Th>
-                  <Th class="text-right">Half day</Th>
+                  <Th class="text-right">Full day ($)</Th>
+                  <Th class="text-right">Half day ($)</Th>
                   <Th>Active</Th>
+                  <Th></Th>
                 </Tr>
               </Thead>
               <Tbody>
@@ -106,15 +107,42 @@ adminPricingRoute.get('/', async (c) => {
                   <Tr>
                     <Td class="font-medium">{t.fullName}</Td>
                     <Td class="text-muted-foreground text-sm">{t.role}</Td>
-                    <Td class="text-sm">{t.locationName ?? '—'}</Td>
-                    <Td class="text-right">{formatCents(t.fullDay)}</Td>
-                    <Td class="text-right">{t.halfDay == null ? '—' : formatCents(t.halfDay)}</Td>
-                    <Td>
-                      {t.active ? (
-                        <Badge variant="success">yes</Badge>
-                      ) : (
-                        <Badge variant="secondary">no</Badge>
-                      )}
+                    <Td class="text-sm">{t.locationName ?? '-'}</Td>
+                    <Td colspan={4} class="px-0">
+                      <form
+                        method="post"
+                        action="/admin/pricing/therapist"
+                        class="flex items-center justify-end gap-2 px-3"
+                      >
+                        <CsrfInput token={csrfToken} />
+                        <input type="hidden" name="slug" value={t.slug} />
+                        <Input
+                          name="full_day_dollars"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={(t.fullDay / 100).toFixed(2)}
+                          required
+                          class="w-28 text-right"
+                        />
+                        <Input
+                          name="half_day_dollars"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={t.halfDay == null ? '' : (t.halfDay / 100).toFixed(2)}
+                          placeholder="-"
+                          class="w-28 text-right"
+                        />
+                        {t.active ? (
+                          <Badge variant="success">yes</Badge>
+                        ) : (
+                          <Badge variant="secondary">no</Badge>
+                        )}
+                        <Button type="submit" size="sm" variant="outline">
+                          Save
+                        </Button>
+                      </form>
                     </Td>
                   </Tr>
                 ))}
@@ -154,6 +182,61 @@ adminPricingRoute.get('/', async (c) => {
       </AdminShell>
     </Layout>,
   );
+});
+
+adminPricingRoute.post('/therapist', async (c) => {
+  // Admin-only - same gate as the rest of /admin/pricing.
+  const user = c.get('user');
+  if (user?.role !== 'admin') return c.json({ error: 'forbidden' }, 403);
+
+  const form = await c.req.formData();
+  if (!verifyCsrfToken(c, String(form.get('_csrf') ?? ''))) {
+    return c.json({ error: 'csrf_mismatch' }, 403);
+  }
+
+  const slug = String(form.get('slug') ?? '').trim();
+  if (!slug) return c.json({ error: 'missing_slug' }, 400);
+
+  const fullRaw = String(form.get('full_day_dollars') ?? '').trim();
+  const halfRaw = String(form.get('half_day_dollars') ?? '').trim();
+
+  const fullDollars = Number(fullRaw);
+  if (!Number.isFinite(fullDollars) || fullDollars < 0 || fullDollars > 10_000) {
+    return c.json({ error: 'invalid_full_day' }, 400);
+  }
+  const fullDayCents = Math.round(fullDollars * 100);
+
+  let halfDayCents: number | null = null;
+  if (halfRaw.length > 0) {
+    const halfDollars = Number(halfRaw);
+    if (!Number.isFinite(halfDollars) || halfDollars < 0 || halfDollars > 10_000) {
+      return c.json({ error: 'invalid_half_day' }, 400);
+    }
+    halfDayCents = Math.round(halfDollars * 100);
+  }
+
+  const { db } = await getDb();
+  const result = await db
+    .update(therapists)
+    .set({
+      defaultFullDayCents: fullDayCents,
+      defaultHalfDayCents: halfDayCents,
+    })
+    .where(eq(therapists.slug, slug))
+    .returning({ id: therapists.id });
+
+  if (result.length === 0) {
+    return c.json({ error: 'therapist_not_found' }, 404);
+  }
+
+  log.info('therapist_rates_updated', {
+    slug,
+    fullDayCents,
+    halfDayCents,
+    updatedByEmail: user.email ?? null,
+  });
+
+  return c.redirect('/admin/pricing');
 });
 
 adminPricingRoute.post('/ach-discount', async (c) => {

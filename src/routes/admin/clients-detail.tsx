@@ -1,5 +1,5 @@
 /**
- * /admin/clients/:id — minimal detail view.
+ * /admin/clients/:id - minimal detail view.
  *
  * Renders: client + retreat snapshot, state, public client_token URL,
  * required consents w/ signed-or-not, recent audit events, recent emails.
@@ -160,7 +160,7 @@ adminClientsDetailRoute.get('/:id', async (c) => {
   const user = c.get('user');
 
   return c.html(
-    <Layout title={`Retreat ${row.retreatId.slice(0, 8)} — ITR Clients`}>
+    <Layout title={`Retreat ${row.retreatId.slice(0, 8)} - ITR Clients`}>
       <AdminShell user={user} current="dashboard">
         <PageHeader
           title={`Retreat ${row.retreatId.slice(0, 8)}`}
@@ -232,9 +232,9 @@ adminClientsDetailRoute.get('/:id', async (c) => {
                 rows={[
                   ['Client', `${row.clientFirstName} ${row.clientLastName}`],
                   ['Email', row.clientEmail],
-                  ['State of residence', row.clientStateOfResidence ?? '—'],
+                  ['State of residence', row.clientStateOfResidence ?? '-'],
                   ['Therapist', row.therapistFullName],
-                  ['Location', row.locationName ?? '—'],
+                  ['Location', row.locationName ?? '-'],
                 ]}
               />
             </CardContent>
@@ -253,7 +253,7 @@ adminClientsDetailRoute.get('/:id', async (c) => {
                   [
                     'Half day rate',
                     row.halfDayRateCents == null
-                      ? '—'
+                      ? '-'
                       : `${formatCents(row.halfDayRateCents)} × ${row.plannedHalfDays}`,
                   ],
                   ['Total planned', formatCents(row.totalPlannedCents)],

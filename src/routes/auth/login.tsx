@@ -1,5 +1,5 @@
 /**
- * /admin/login — Firebase JS SDK Google sign-in (M8).
+ * /admin/login - Firebase JS SDK Google sign-in (M8).
  *
  * Browser flow:
  *   1. Page loads Firebase compat SDK from gstatic CDN.
@@ -55,7 +55,7 @@ adminLoginRoute.get('/login', (c) => {
 
   if (!authEnabled) {
     return c.html(
-      <CenteredShell title="Login (disabled) — ITR Clients">
+      <CenteredShell title="Login (disabled) - ITR Clients">
         <Card>
           <CardHeader>
             <CardTitle>Login disabled</CardTitle>
@@ -83,7 +83,7 @@ adminLoginRoute.get('/login', (c) => {
 
   if (!apiKey || !authDomain || !projectId) {
     return c.html(
-      <CenteredShell title="Login — config pending">
+      <CenteredShell title="Login - config pending">
         <Alert variant="destructive">
           <AlertTitle>Setup pending</AlertTitle>
           <AlertDescription>
@@ -105,7 +105,7 @@ adminLoginRoute.get('/login', (c) => {
   );
 
   return c.html(
-    <Layout title="Sign in — ITR Clients" head={head}>
+    <Layout title="Sign in - ITR Clients" head={head}>
       <div class="min-h-screen flex items-center justify-center px-4 py-12">
         <div class="w-full max-w-md space-y-6">
           <div class="text-center space-y-2">

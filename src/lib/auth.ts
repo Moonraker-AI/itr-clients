@@ -187,5 +187,16 @@ export function therapistCanAccess(
 ): boolean {
   if (!user) return true; // pre-rollout dev no-op (auth disabled)
   if (user.role === 'admin') return true;
-  return user.therapistId === retreatTherapistId;
+  const allowed = user.therapistId === retreatTherapistId;
+  if (!allowed) {
+    // HIPAA forensics: surface cross-tenant attempts. Callers respond
+    // with c.notFound() (not 403) to avoid acting as a probing oracle,
+    // but we still want a record of who tried what.
+    log.warn('therapist_access_denied', {
+      attempterTherapistId: user.therapistId,
+      attempterEmail: user.email ?? null,
+      retreatTherapistId,
+    });
+  }
+  return allowed;
 }

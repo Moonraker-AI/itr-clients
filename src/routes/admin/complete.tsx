@@ -1,5 +1,5 @@
 /**
- * /admin/clients/:id/complete — therapist completion form (M5).
+ * /admin/clients/:id/complete - therapist completion form (M5).
  */
 
 import { Hono } from 'hono';
@@ -67,7 +67,7 @@ adminCompleteRoute.get('/:id/complete', async (c) => {
   const clientName = `${row.clientFirstName} ${row.clientLastName}`;
 
   return c.html(
-    <Layout title="Complete retreat — ITR Clients">
+    <Layout title="Complete retreat - ITR Clients">
       <AdminShell user={user} current="dashboard">
         <PageHeader
           title="Complete retreat"
@@ -83,7 +83,7 @@ adminCompleteRoute.get('/:id/complete', async (c) => {
             <Alert variant="destructive">
               <AlertTitle>Wrong state</AlertTitle>
               <AlertDescription>
-                State is <code class="font-mono">{row.state}</code> — only{' '}
+                State is <code class="font-mono">{row.state}</code> - only{' '}
                 <code class="font-mono">in_progress</code> can submit completion.
               </AlertDescription>
             </Alert>
@@ -254,7 +254,7 @@ adminCompleteRoute.post('/:id/complete', async (c) => {
       retreatId: id,
       actor: { kind: 'system' },
       failureCode: 'no_saved_payment_method',
-      failureMessage: 'no saved payment method on stripe_customers — cannot off-session charge',
+      failureMessage: 'no saved payment method on stripe_customers - cannot off-session charge',
     });
     return c.redirect(`/admin/clients/${id}`);
   }
