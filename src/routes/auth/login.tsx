@@ -130,7 +130,12 @@ adminLoginRoute.get('/login', (c) => {
               >
                 Sign in with Google
               </Button>
-              <p id="status" class="text-sm text-destructive min-h-[1.25rem]"></p>
+              <p
+                id="status"
+                role="status"
+                aria-live="polite"
+                class="text-sm text-destructive min-h-[1.25rem]"
+              ></p>
               {error ? (
                 <Alert variant="destructive">
                   <AlertDescription>{decodeURIComponent(error)}</AlertDescription>

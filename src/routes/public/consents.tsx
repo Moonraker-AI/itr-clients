@@ -298,9 +298,17 @@ publicConsentsRoute.post(
 
     const signatureDataUrl = get('signature_data_url');
     const signedName = get('signed_name').trim();
+    const attestationTyped = get('attestation_typed') === 'yes';
+    // a11y P2#12: typed-attestation alternative for users who can't use the
+    // canvas pad. Either drawn signature OR (typed name + attest checkbox)
+    // satisfies requires_signature. ESIGN-Act-style — typed name + audit
+    // trail (IP, UA, timestamp, evidence_blob) is a valid e-sig.
     if (next.requiresSignature) {
-      if (!signatureDataUrl || !signedName) {
-        return c.json({ error: 'signature_required' }, 400);
+      if (!signedName) {
+        return c.json({ error: 'signed_name_required' }, 400);
+      }
+      if (!signatureDataUrl && !attestationTyped) {
+        return c.json({ error: 'signature_or_attestation_required' }, 400);
       }
     }
     if (signedName.length > 200) {
@@ -313,6 +321,8 @@ publicConsentsRoute.post(
       evidence[field.key] = v ?? null;
     }
     if (signatureDataUrl) evidence['signature_data_url'] = signatureDataUrl;
+    evidence['signature_method'] = signatureDataUrl ? 'drawn' : 'typed';
+    if (!signatureDataUrl) evidence['typed_attestation'] = true;
 
     const { db } = await getDb();
     const [sig] = await db
@@ -556,23 +566,39 @@ function SignaturePad() {
       </CardHeader>
       <CardContent class="space-y-4">
         <p class="text-sm text-muted-foreground">
-          Sign in the box below using your mouse or finger.
+          Sign in the box below using your mouse or finger. If you can't draw
+          (using a keyboard, screen reader, or accessible input device), check
+          the typed-attestation box at the bottom and your typed name will be
+          your electronic signature under the ESIGN Act.
         </p>
         <div class="flex flex-wrap items-end gap-3">
           <canvas
             id="sig-pad"
             width="480"
             height="160"
+            aria-label="Signature pad. If you cannot use this, check the typed-attestation box below."
             class="border border-input rounded-md bg-white touch-none"
           />
           <Button type="button" id="sig-clear" variant="outline" size="sm">
             Clear
           </Button>
         </div>
-        <input type="hidden" name="signature_data_url" id="signature_data_url" required />
-        <Field label="Printed name" for="signed_name">
+        <input type="hidden" name="signature_data_url" id="signature_data_url" />
+        <Field label="Printed name (required)" for="signed_name">
           <Input id="signed_name" name="signed_name" type="text" required />
         </Field>
+        <label class="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            name="attestation_typed"
+            value="yes"
+            class="mt-0.5 h-4 w-4 rounded border-input"
+          />
+          <span>
+            I cannot use the signature pad above. By checking this box, I attest
+            that the typed name above is my electronic signature.
+          </span>
+        </label>
       </CardContent>
       <script src="/static/js/signature-pad.js" defer></script>
     </Card>

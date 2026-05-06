@@ -216,7 +216,12 @@ function renderConfirmPaymentPage(args: {
             >
               Confirm payment
             </Button>
-            <p id="status" class="text-sm text-destructive min-h-[1.25rem]"></p>
+            <p
+              id="status"
+              role="status"
+              aria-live="polite"
+              class="text-sm text-destructive min-h-[1.25rem]"
+            ></p>
           </CardContent>
         </Card>
       </ClientShell>
