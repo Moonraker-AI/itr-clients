@@ -48,6 +48,11 @@ import {
 
 export const adminClientsDetailRoute = new Hono();
 
+// Native <details>/<summary> collapsible card header. Hides the default
+// marker on every browser, applies CardHeader-style padding + flex.
+const SUMMARY_CLASS =
+  'flex items-center justify-between gap-3 p-6 cursor-pointer list-none select-none [&::-webkit-details-marker]:hidden [&::marker]:hidden';
+
 function DefList({ rows }: { rows: Array<[string, unknown]> }) {
   return (
     <dl class="grid grid-cols-[180px_1fr] gap-y-2 gap-x-4 text-sm">
@@ -368,79 +373,95 @@ adminClientsDetailRoute.get('/:id', async (c) => {
         </Card>
 
         <Card class="mb-6">
-          <CardHeader>
-            <CardTitle>Audit log</CardTitle>
-          </CardHeader>
-          <CardContent class="px-0">
-            <Table>
-              <Thead>
-                <Tr>
-                  <Th>When</Th>
-                  <Th>Event</Th>
-                  <Th>Actor</Th>
-                  <Th>Payload</Th>
-                </Tr>
-              </Thead>
-              <Tbody>
-                {audits.map((a) => (
+          <details class="group">
+            <summary class={SUMMARY_CLASS}>
+              <CardTitle>
+                Audit log{' '}
+                <span class="text-sm font-normal text-muted-foreground">({audits.length})</span>
+              </CardTitle>
+              <span class="text-muted-foreground transition-transform group-open:rotate-180">
+                ▾
+              </span>
+            </summary>
+            <CardContent class="px-0">
+              <Table>
+                <Thead>
                   <Tr>
-                    <Td class="text-xs text-muted-foreground whitespace-nowrap">
-                      {a.createdAt.toISOString()}
-                    </Td>
-                    <Td>
-                      <code class="font-mono text-xs">{a.eventType}</code>
-                    </Td>
-                    <Td class="text-sm">{a.actorType}</Td>
-                    <Td>
-                      <code class="font-mono text-xs whitespace-pre-wrap break-all block max-w-md">
-                        {a.payload ? JSON.stringify(a.payload) : ''}
-                      </code>
-                    </Td>
+                    <Th>When</Th>
+                    <Th>Event</Th>
+                    <Th>Actor</Th>
+                    <Th>Payload</Th>
                   </Tr>
-                ))}
-              </Tbody>
-            </Table>
-          </CardContent>
+                </Thead>
+                <Tbody>
+                  {audits.map((a) => (
+                    <Tr>
+                      <Td class="text-xs text-muted-foreground whitespace-nowrap">
+                        {a.createdAt.toISOString()}
+                      </Td>
+                      <Td>
+                        <code class="font-mono text-xs">{a.eventType}</code>
+                      </Td>
+                      <Td class="text-sm">{a.actorType}</Td>
+                      <Td>
+                        <code class="font-mono text-xs whitespace-pre-wrap break-all block max-w-md">
+                          {a.payload ? JSON.stringify(a.payload) : ''}
+                        </code>
+                      </Td>
+                    </Tr>
+                  ))}
+                </Tbody>
+              </Table>
+            </CardContent>
+          </details>
         </Card>
 
         <Card>
-          <CardHeader>
-            <CardTitle>Email log</CardTitle>
-          </CardHeader>
-          <CardContent class="px-0">
-            <Table>
-              <Thead>
-                <Tr>
-                  <Th>When</Th>
-                  <Th>Template</Th>
-                  <Th>Recipient</Th>
-                  <Th>Status</Th>
-                  <Th>Gmail msg id</Th>
-                </Tr>
-              </Thead>
-              <Tbody>
-                {emails.map((e) => (
+          <details class="group">
+            <summary class={SUMMARY_CLASS}>
+              <CardTitle>
+                Email log{' '}
+                <span class="text-sm font-normal text-muted-foreground">({emails.length})</span>
+              </CardTitle>
+              <span class="text-muted-foreground transition-transform group-open:rotate-180">
+                ▾
+              </span>
+            </summary>
+            <CardContent class="px-0">
+              <Table>
+                <Thead>
                   <Tr>
-                    <Td class="text-xs text-muted-foreground whitespace-nowrap">
-                      {e.sentAt.toISOString()}
-                    </Td>
-                    <Td class="text-sm">{e.templateName}</Td>
-                    <Td class="text-sm">{e.recipient}</Td>
-                    <Td>
-                      {e.status === 'failed' ? (
-                        <Badge variant="destructive">{e.status}</Badge>
-                      ) : (
-                        <Badge variant="secondary">{e.status}</Badge>
-                      )}
-                    </Td>
-                    <Td>
-                      <code class="font-mono text-xs">{e.gmailMessageId ?? ''}</code>
-                    </Td>
+                    <Th>When</Th>
+                    <Th>Template</Th>
+                    <Th>Recipient</Th>
+                    <Th>Status</Th>
+                    <Th>Gmail msg id</Th>
                   </Tr>
-                ))}
-              </Tbody>
-            </Table>
-          </CardContent>
+                </Thead>
+                <Tbody>
+                  {emails.map((e) => (
+                    <Tr>
+                      <Td class="text-xs text-muted-foreground whitespace-nowrap">
+                        {e.sentAt.toISOString()}
+                      </Td>
+                      <Td class="text-sm">{e.templateName}</Td>
+                      <Td class="text-sm">{e.recipient}</Td>
+                      <Td>
+                        {e.status === 'failed' ? (
+                          <Badge variant="destructive">{e.status}</Badge>
+                        ) : (
+                          <Badge variant="secondary">{e.status}</Badge>
+                        )}
+                      </Td>
+                      <Td>
+                        <code class="font-mono text-xs">{e.gmailMessageId ?? ''}</code>
+                      </Td>
+                    </Tr>
+                  ))}
+                </Tbody>
+              </Table>
+            </CardContent>
+          </details>
         </Card>
       </AdminShell>
     </Layout>,
