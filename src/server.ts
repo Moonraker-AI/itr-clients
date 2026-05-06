@@ -14,6 +14,7 @@ import { adminClientsNewRoute } from './routes/admin/clients-new.js';
 import { adminCompleteRoute } from './routes/admin/complete.js';
 import { adminConfirmDatesRoute } from './routes/admin/confirm-dates.js';
 import { adminDashboardRoute } from './routes/admin/dashboard.js';
+import { adminExportRoute } from './routes/admin/export.js';
 import { adminPricingRoute } from './routes/admin/pricing.js';
 import { adminRefundRoute } from './routes/admin/refund.js';
 import { adminLoginRoute } from './routes/auth/login.js';
@@ -157,6 +158,7 @@ if (!webhookOnly) {
   app.route('/admin/clients', adminCompleteRoute);
   app.route('/admin/clients', adminRefundRoute);
   app.route('/admin/clients', adminCancelRoute);
+  app.route('/admin/clients', adminExportRoute);
   app.route('/admin/clients', adminClientsDetailRoute);
   // Dashboard mounted last so it doesn't shadow the more specific
   // /admin/* routes above.
