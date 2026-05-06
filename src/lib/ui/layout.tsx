@@ -37,6 +37,12 @@ export const Layout: FC<LayoutProps> = ({ title, head, theme, scripts, children 
         {head}
       </head>
       <body class="min-h-screen bg-background text-foreground antialiased">
+        <a
+          href="#main"
+          class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:bg-card focus:text-foreground focus:px-3 focus:py-2 focus:shadow-md focus:ring-2 focus:ring-ring"
+        >
+          Skip to main content
+        </a>
         {children}
         {scripts}
       </body>
@@ -107,7 +113,10 @@ const TEXT_BTN_CLASS =
 export const AdminShell: FC<AdminShellProps> = ({ user, current, children }) => {
   return (
     <div class="flex min-h-screen">
-      <aside class="hidden w-64 shrink-0 border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex md:flex-col">
+      <aside
+        aria-label="Primary navigation"
+        class="hidden w-64 shrink-0 border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex md:flex-col"
+      >
         <a
           href="/admin"
           class="h-16 px-6 flex items-center gap-3 border-b border-sidebar-border"
@@ -125,6 +134,7 @@ export const AdminShell: FC<AdminShellProps> = ({ user, current, children }) => 
             return (
               <a
                 href={item.href}
+                aria-current={active ? 'page' : undefined}
                 class={
                   'block rounded-md px-3 py-2 text-sm font-medium transition-colors ' +
                   (active
@@ -183,7 +193,7 @@ export const AdminShell: FC<AdminShellProps> = ({ user, current, children }) => 
             </button>
           </div>
         </header>
-        <div class="px-6 py-8 max-w-6xl mx-auto">{children}</div>
+        <div id="main" class="px-6 py-8 max-w-6xl mx-auto">{children}</div>
       </main>
       <script src="/static/js/admin-shell.js" defer></script>
     </div>
@@ -230,6 +240,8 @@ export const ClientShell: FC<ClientShellProps> = ({ width = 'md', children }) =>
         <div class="text-sm font-semibold tracking-tight">Intensive Therapy Retreats</div>
       </div>
     </header>
-    <main class={`mx-auto px-6 py-8 ${WIDTH_CLASS[width]}`}>{children}</main>
+    <main id="main" class={`mx-auto px-6 py-8 ${WIDTH_CLASS[width]}`}>
+      {children}
+    </main>
   </div>
 );
