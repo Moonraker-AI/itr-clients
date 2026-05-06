@@ -120,6 +120,33 @@ export function signatureObjectName(args: {
 }
 
 /**
+ * Mint a short-lived v4 signed URL for a `gs://bucket/object` path. Used
+ * by the admin Detail page to let therapists/admins download signed
+ * consent PDFs without exposing the bucket publicly.
+ *
+ * Default TTL = 5 minutes. URL is single-use-ish — anyone with the URL
+ * before expiry can fetch the object, so the route that returns it must
+ * be auth-gated and the URL itself shouldn't be logged.
+ */
+export async function getSignedDownloadUrl(args: {
+  storagePath: string;
+  expiresInSec?: number;
+}): Promise<string> {
+  const m = args.storagePath.match(/^gs:\/\/([^/]+)\/(.+)$/);
+  if (!m) throw new Error('storagePath must be gs://bucket/object');
+  const [, bucketName, objectName] = m;
+  storage ??= new Storage();
+  const file = storage.bucket(bucketName!).file(objectName!);
+  const expiresMs = Date.now() + (args.expiresInSec ?? 300) * 1000;
+  const [url] = await file.getSignedUrl({
+    version: 'v4',
+    action: 'read',
+    expires: expiresMs,
+  });
+  return url;
+}
+
+/**
  * Decodes a PNG data URL produced by an HTML5 canvas signature pad.
  * Throws if the prefix is missing or the payload is empty — never feed
  * unvalidated input straight into a Buffer.

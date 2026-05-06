@@ -8,10 +8,11 @@
  */
 
 import { Hono } from 'hono';
-import { eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 
 import { getDb } from '../../db/client.js';
-import { clients, retreats, stripeCustomers } from '../../db/schema.js';
+import { clients, payments, retreats, stripeCustomers } from '../../db/schema.js';
+import { formatCents } from '../../lib/pricing.js';
 import { log } from '../../lib/phi-redactor.js';
 import {
   createDepositCheckoutSession,
@@ -19,6 +20,7 @@ import {
   upsertCustomer,
 } from '../../lib/stripe.js';
 import {
+  Badge,
   Card,
   CardContent,
   CardHeader,
@@ -116,13 +118,34 @@ publicCheckoutRoute.get('/:token/checkout/success', async (c) => {
     paid = true;
   }
 
+  // Pull the latest deposit row (set by the Stripe webhook). May be missing
+  // if the success redirect lands before the webhook has been processed —
+  // in that case we still show the planned amount + a "processing" status.
+  const { db } = await getDb();
+  const [depositRow] = await db
+    .select({
+      amountCents: payments.amountCents,
+      status: payments.status,
+      createdAt: payments.createdAt,
+    })
+    .from(payments)
+    .where(and(eq(payments.retreatId, ctx.retreatId), eq(payments.kind, 'deposit')))
+    .orderBy(desc(payments.createdAt))
+    .limit(1);
+
+  const depositAmount = depositRow?.amountCents ?? ctx.depositCents;
+  const depositStatus = depositRow?.status ?? (paid ? 'pending_webhook' : 'pending');
+  const paidAt = depositRow?.createdAt ?? null;
+
   return c.html(
     <Layout title={`Deposit ${paid ? 'received' : 'pending'} — Intensive Therapy Retreats`}>
       <ClientShell>
         <Card>
           <CardHeader>
             <CardTitle>
-              {paid ? 'Thanks — your deposit is received.' : 'Your deposit is processing.'}
+              {paid
+                ? 'Thanks so much for your deposit! It has been received.'
+                : 'Your deposit is processing.'}
             </CardTitle>
           </CardHeader>
           <CardContent class="space-y-4 text-sm">
@@ -131,6 +154,35 @@ publicCheckoutRoute.get('/:token/checkout/success', async (c) => {
                 ? "Your therapist will confirm your retreat dates next. We'll email you when they do."
                 : "We haven't received the payment confirmation yet. Refresh in a moment, or check your email."}
             </p>
+
+            <div class="rounded-md border border-border bg-muted/40 p-4">
+              <div class="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
+                Deposit status
+              </div>
+              <dl class="grid grid-cols-[120px_1fr] gap-y-1.5 text-sm">
+                <dt class="text-muted-foreground">Amount</dt>
+                <dd class="font-medium">{formatCents(depositAmount)}</dd>
+                <dt class="text-muted-foreground">Status</dt>
+                <dd>
+                  {depositStatus === 'succeeded' ? (
+                    <Badge variant="success">received</Badge>
+                  ) : depositStatus === 'pending_webhook' ? (
+                    <Badge variant="secondary">received · syncing</Badge>
+                  ) : depositStatus === 'failed' ? (
+                    <Badge variant="destructive">failed</Badge>
+                  ) : (
+                    <Badge variant="secondary">processing</Badge>
+                  )}
+                </dd>
+                {paidAt ? (
+                  <>
+                    <dt class="text-muted-foreground">Recorded</dt>
+                    <dd>{paidAt.toISOString().slice(0, 16).replace('T', ' ')} UTC</dd>
+                  </>
+                ) : null}
+              </dl>
+            </div>
+
             <LinkButton href={`/c/${token}`} variant="outline">
               Back to retreat status
             </LinkButton>
