@@ -13,7 +13,7 @@
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { raw } from 'hono/html';
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { marked } from 'marked';
 
 import { getDb } from '../../db/client.js';
@@ -242,7 +242,11 @@ publicConsentsRoute.get('/:token/view/:templateName', async (c) => {
 
   const { db } = await getDb();
   const required = await db
-    .select({ name: consentTemplates.name, body: consentTemplates.bodyMarkdown })
+    .select({
+      templateId: consentTemplates.id,
+      name: consentTemplates.name,
+      body: consentTemplates.bodyMarkdown,
+    })
     .from(retreatRequiredConsents)
     .innerJoin(consentTemplates, eq(retreatRequiredConsents.templateId, consentTemplates.id))
     .where(eq(retreatRequiredConsents.retreatId, ctx.retreatId));
@@ -256,6 +260,33 @@ publicConsentsRoute.get('/:token/view/:templateName', async (c) => {
   } catch {
     /* fall back to raw name */
   }
+
+  // Pull the signature for this template (if any) so we can render it inline.
+  const [sig] = await db
+    .select({
+      signedName: consentSignatures.signedName,
+      signedAt: consentSignatures.signedAt,
+      evidenceBlob: consentSignatures.evidenceBlob,
+    })
+    .from(consentSignatures)
+    .where(
+      and(
+        eq(consentSignatures.retreatId, ctx.retreatId),
+        eq(consentSignatures.templateId, tpl.templateId),
+      ),
+    );
+
+  const evidence = (sig?.evidenceBlob ?? {}) as Record<string, unknown>;
+  const sigDataUrl =
+    typeof evidence['signature_data_url'] === 'string'
+      ? (evidence['signature_data_url'] as string)
+      : null;
+  const sigMethod =
+    typeof evidence['signature_method'] === 'string'
+      ? (evidence['signature_method'] as string)
+      : sigDataUrl
+        ? 'drawn'
+        : 'typed';
 
   const substituted = substitute(tpl.body, buildTemplateVars(ctx));
   const bodyHtml = marked.parse(substituted, { async: false }) as string;
@@ -273,6 +304,37 @@ publicConsentsRoute.get('/:token/view/:templateName', async (c) => {
             <div class={CONSENT_PROSE_CLASS}>{raw(bodyHtml)}</div>
           </CardContent>
         </Card>
+
+        {sig ? (
+          <Card class="mb-6">
+            <CardHeader>
+              <CardTitle>Signature</CardTitle>
+            </CardHeader>
+            <CardContent class="space-y-3">
+              <dl class="grid grid-cols-[140px_1fr] gap-y-1.5 text-sm">
+                <dt class="text-muted-foreground">Signed by</dt>
+                <dd class="font-medium">{sig.signedName}</dd>
+                <dt class="text-muted-foreground">Date</dt>
+                <dd>{sig.signedAt.toISOString().slice(0, 10)}</dd>
+                <dt class="text-muted-foreground">Method</dt>
+                <dd class="text-sm">
+                  {sigMethod === 'drawn' ? 'Drawn signature' : 'Typed attestation (ESIGN Act)'}
+                </dd>
+              </dl>
+              {sigDataUrl ? (
+                <img
+                  src={sigDataUrl}
+                  alt={`Signature of ${sig.signedName}`}
+                  class="border border-input rounded-md bg-white max-w-md"
+                />
+              ) : (
+                <p class="text-sm text-muted-foreground italic">
+                  No drawn signature on file. Typed attestation recorded.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        ) : null}
 
         <LinkButton href={`/c/${token}`} variant="outline">
           ← Back to retreat status
