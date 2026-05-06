@@ -74,7 +74,7 @@ publicPaymentRoute.get('/:token/payment-updated', async (c) => {
   if (!r) return c.notFound();
 
   return c.html(
-    <Layout title="Payment method updated — Intensive Therapy Retreats">
+    <Layout title="Payment method updated - Intensive Therapy Retreats">
       <ClientShell>
         <Card>
           <CardHeader>
@@ -151,7 +151,7 @@ publicPaymentRoute.get('/:token/confirm-payment', async (c) => {
 
 function renderNothingToConfirm() {
   return (
-    <Layout title="Nothing to confirm — Intensive Therapy Retreats">
+    <Layout title="Nothing to confirm - Intensive Therapy Retreats">
       <ClientShell>
         <Card>
           <CardHeader>
@@ -171,7 +171,7 @@ function renderNothingToConfirm() {
 
 function renderConfigPending() {
   return (
-    <Layout title="Setup pending — Intensive Therapy Retreats">
+    <Layout title="Setup pending - Intensive Therapy Retreats">
       <ClientShell>
         <Alert variant="destructive">
           <AlertTitle>Setup pending</AlertTitle>
@@ -192,7 +192,7 @@ function renderConfirmPaymentPage(args: {
 }) {
   return (
     <Layout
-      title="Confirm your payment — Intensive Therapy Retreats"
+      title="Confirm your payment - Intensive Therapy Retreats"
       head={<script src="https://js.stripe.com/v3/" />}
     >
       <ClientShell>
@@ -203,7 +203,7 @@ function renderConfirmPaymentPage(args: {
           <CardContent class="space-y-4 text-sm">
             <p>
               Your bank requires an extra verification step before we can complete the charge. Click the
-              button below to confirm — you may be asked to authenticate with your bank.
+              button below to confirm - you may be asked to authenticate with your bank.
             </p>
             <Button
               id="confirm"

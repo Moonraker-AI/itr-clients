@@ -70,7 +70,7 @@ const THERAPISTS: TherapistSeed[] = [
     slug: 'bambi-rattner',
     fullName: 'Bambi Rattner',
     email: 'bambi@intensivetherapyretreat.com',
-    role: 'therapist',
+    role: 'admin',
     locationSlug: 'northampton-ma',
     fullDayCents: 155_000,
     halfDayCents: 83_000,

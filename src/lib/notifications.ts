@@ -92,7 +92,7 @@ function compose(args: NotifyArgs): Composed {
   const link = args.event === 'consent_package_sent' ? args.clientPortalUrl : args.adminUrl;
   // Append retreat-id tail to internal subjects so an admin scanning their
   // inbox can correlate "this alert is about which retreat?" without
-  // opening the body. retreatId is an opaque uuid — NOT PHI — so this
+  // opening the body. retreatId is an opaque uuid - NOT PHI - so this
   // doesn't violate the PHI-clean-body principle. Skipped for the
   // client-facing consent_package_sent event so the client doesn't see
   // an internal id appended to their personal email.
@@ -103,12 +103,12 @@ function compose(args: NotifyArgs): Composed {
         subject: 'Your Intensive Therapy Retreats consent package',
         textBody:
           `Hi ${args.clientFirstName},\n\n` +
-          `Your therapist has prepared your consent package. Please review and sign at the link below — it is unique to you.\n\n` +
+          `Your therapist has prepared your consent package. Please review and sign at the link below - it is unique to you.\n\n` +
           `${link}\n\n` +
           `If you have questions, reply to this email and our team will be in touch.\n`,
         htmlBody:
           `<p>Hi ${esc(args.clientFirstName)},</p>` +
-          `<p>Your therapist has prepared your consent package. Please review and sign at the link below — it is unique to you.</p>` +
+          `<p>Your therapist has prepared your consent package. Please review and sign at the link below - it is unique to you.</p>` +
           `<p><a href="${esc(link)}">${esc(link)}</a></p>` +
           `<p>If you have questions, reply to this email and our team will be in touch.</p>`,
         templateName: 'consent_package_sent',
@@ -122,7 +122,7 @@ function compose(args: NotifyArgs): Composed {
       };
     case 'deposit_paid':
       return {
-        subject: `Deposit paid — please confirm dates ${tag}`,
+        subject: `Deposit paid - please confirm dates ${tag}`,
         textBody: `Deposit paid. Please confirm dates: ${link}\n`,
         htmlBody: `<p>Deposit paid. Please confirm dates.</p><p><a href="${esc(link)}">${esc(link)}</a></p>`,
         templateName: 'deposit_paid',
@@ -198,7 +198,7 @@ export async function notify(args: NotifyArgs): Promise<void> {
   const recipients = new Set<string>(internal.map((r) => r.email));
 
   if (ACTION_REQUIRED_EVENTS.has(args.event)) {
-    // Loop in only the retreat's assigned therapist — not every active
+    // Loop in only the retreat's assigned therapist - not every active
     // therapist. Resolved per-retreat via retreat.therapist_id.
     const [t] = await db
       .select({ email: therapists.email })

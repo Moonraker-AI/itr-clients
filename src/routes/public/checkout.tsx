@@ -119,7 +119,7 @@ publicCheckoutRoute.get('/:token/checkout/success', async (c) => {
   }
 
   // Pull the latest deposit row (set by the Stripe webhook). May be missing
-  // if the success redirect lands before the webhook has been processed —
+  // if the success redirect lands before the webhook has been processed -
   // in that case we still show the planned amount + a "processing" status.
   const { db } = await getDb();
   const [depositRow] = await db
@@ -138,7 +138,7 @@ publicCheckoutRoute.get('/:token/checkout/success', async (c) => {
   const paidAt = depositRow?.createdAt ?? null;
 
   return c.html(
-    <Layout title={`Deposit ${paid ? 'received' : 'pending'} — Intensive Therapy Retreats`}>
+    <Layout title={`Deposit ${paid ? 'received' : 'pending'} - Intensive Therapy Retreats`}>
       <ClientShell>
         <Card>
           <CardHeader>

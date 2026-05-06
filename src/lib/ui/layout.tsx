@@ -248,13 +248,27 @@ const WIDTH_CLASS: Record<NonNullable<ClientShellProps['width']>, string> = {
 export const ClientShell: FC<ClientShellProps> = ({ width = 'md', children }) => (
   <div class="min-h-screen bg-background">
     <header class="h-16 border-b border-border bg-card">
-      <div class={`h-full mx-auto px-6 flex items-center gap-3 ${WIDTH_CLASS[width]}`}>
-        {LOGO_MARK}
-        <div class="text-sm font-semibold tracking-tight">Intensive Therapy Retreats</div>
+      <div class={`h-full mx-auto px-6 flex items-center justify-between gap-3 ${WIDTH_CLASS[width]}`}>
+        <div class="flex items-center gap-3">
+          {LOGO_MARK}
+          <div class="text-sm font-semibold tracking-tight">Intensive Therapy Retreats</div>
+        </div>
+        <button
+          type="button"
+          id="theme-toggle"
+          aria-label="Toggle theme"
+          class={ICON_BTN_CLASS}
+        >
+          {SUN_ICON}
+          {MOON_ICON}
+        </button>
       </div>
     </header>
     <main id="main" class={`mx-auto px-6 py-8 ${WIDTH_CLASS[width]}`}>
       {children}
     </main>
+    {/* Reuse admin-shell.js - it no-ops gracefully when sign-out/row-link
+        targets are absent on client pages and just binds the theme toggle. */}
+    <script src="/static/js/admin-shell.js" defer></script>
   </div>
 );
