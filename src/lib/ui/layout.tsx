@@ -234,13 +234,14 @@ export function ScriptBlock({ src, body }: { src?: string; body?: string }) {
 
 type ClientShellProps = PropsWithChildren<{
   /** Page width cap. Defaults to "md" (max-w-2xl). */
-  width?: 'sm' | 'md' | 'lg';
+  width?: 'sm' | 'md' | 'lg' | 'xl';
 }>;
 
 const WIDTH_CLASS: Record<NonNullable<ClientShellProps['width']>, string> = {
   sm: 'max-w-md',
   md: 'max-w-2xl',
   lg: 'max-w-4xl',
+  xl: 'max-w-5xl',
 };
 
 /** Centered client-facing shell with brand header. */

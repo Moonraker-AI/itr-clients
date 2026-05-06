@@ -12,7 +12,9 @@
 
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
+import { raw } from 'hono/html';
 import { asc, eq } from 'drizzle-orm';
+import { marked } from 'marked';
 
 import { getDb } from '../../db/client.js';
 import {
@@ -27,6 +29,7 @@ import {
 } from '../../db/schema.js';
 import {
   getTemplate,
+  substitute,
   type RequiredField as TemplateRequiredField,
 } from '../../lib/consent-templates.js';
 import { renderConsentPdf, type IntakeAnswer } from '../../lib/pdf.js';
@@ -194,7 +197,12 @@ publicConsentsRoute.get('/:token', async (c) => {
             <ul class="space-y-3">
               {items.map((i) => (
                 <li class="flex items-center justify-between gap-3 text-sm">
-                  <span>{i.title}</span>
+                  <a
+                    href={`/c/${ctx.clientToken}/view/${i.name}`}
+                    class="text-primary underline-offset-4 hover:underline"
+                  >
+                    {i.title}
+                  </a>
                   {i.requiresSignature ? (
                     i.signed ? (
                       <Badge variant="success">✓ signed</Badge>
@@ -221,6 +229,59 @@ publicConsentsRoute.get('/:token', async (c) => {
   );
 });
 
+/** Read-only view of any consent template attached to this retreat.
+ * Used for informational templates (Notice of Privacy Practices) and to
+ * let clients re-read a signed document at any time. No form, no submit.
+ * Returns 404 if the template isn't attached to this retreat — keeps
+ * the route from acting as a generic content-discovery oracle. */
+publicConsentsRoute.get('/:token/view/:templateName', async (c) => {
+  const token = c.req.param('token');
+  const templateName = c.req.param('templateName');
+  const ctx = await loadByToken(token);
+  if (!ctx) return c.notFound();
+
+  const { db } = await getDb();
+  const required = await db
+    .select({ name: consentTemplates.name, body: consentTemplates.bodyMarkdown })
+    .from(retreatRequiredConsents)
+    .innerJoin(consentTemplates, eq(retreatRequiredConsents.templateId, consentTemplates.id))
+    .where(eq(retreatRequiredConsents.retreatId, ctx.retreatId));
+
+  const tpl = required.find((r) => r.name === templateName);
+  if (!tpl) return c.notFound();
+
+  let title = templateName;
+  try {
+    title = getTemplate(templateName).meta.title;
+  } catch {
+    /* fall back to raw name */
+  }
+
+  const substituted = substitute(tpl.body, buildTemplateVars(ctx));
+  const bodyHtml = marked.parse(substituted, { async: false }) as string;
+
+  return c.html(
+    <Layout title={`${title} — Intensive Therapy Retreats`}>
+      <ClientShell width="xl">
+        <h1 class="text-2xl font-semibold tracking-tight mb-2">{title}</h1>
+        <p class="text-sm text-muted-foreground mb-4">
+          Therapist: <strong class="text-foreground">{ctx.therapistFullName}</strong>
+        </p>
+
+        <Card class="mb-6">
+          <CardContent class="pt-6">
+            <div class={CONSENT_PROSE_CLASS}>{raw(bodyHtml)}</div>
+          </CardContent>
+        </Card>
+
+        <LinkButton href={`/c/${token}`} variant="outline">
+          ← Back to retreat status
+        </LinkButton>
+      </ClientShell>
+    </Layout>,
+  );
+});
+
 publicConsentsRoute.get('/:token/consents', async (c) => {
   const token = c.req.param('token');
   const ctx = await loadByToken(token);
@@ -232,11 +293,14 @@ publicConsentsRoute.get('/:token/consents', async (c) => {
   const next = await loadNextUnsigned(ctx.retreatId);
   if (!next) return c.redirect(`/c/${token}`);
 
-  const escapedBody = next.bodyMarkdown.replace(/\n\n+/g, '\n\n').trim();
+  // Substitute {{var}} placeholders, then render markdown → HTML.
+  // marked.parse() returns string by default in v18 unless { async: true }.
+  const substituted = substitute(next.bodyMarkdown, buildTemplateVars(ctx));
+  const bodyHtml = marked.parse(substituted, { async: false }) as string;
 
   return c.html(
     <Layout title={`${next.title} — Intensive Therapy Retreats`}>
-      <ClientShell width="lg">
+      <ClientShell width="xl">
         <h1 class="text-2xl font-semibold tracking-tight mb-2">{next.title}</h1>
         <p class="text-sm text-muted-foreground mb-4">
           Therapist: <strong class="text-foreground">{ctx.therapistFullName}</strong>
@@ -244,9 +308,7 @@ publicConsentsRoute.get('/:token/consents', async (c) => {
 
         <Card class="mb-6">
           <CardContent class="pt-6">
-            <pre class="whitespace-pre-wrap text-sm bg-muted/50 p-4 rounded-md max-h-96 overflow-auto border border-border">
-              {escapedBody}
-            </pre>
+            <div class={CONSENT_PROSE_CLASS}>{raw(bodyHtml)}</div>
           </CardContent>
         </Card>
 
@@ -255,7 +317,7 @@ publicConsentsRoute.get('/:token/consents', async (c) => {
             <CardHeader>
               <CardTitle>Required information</CardTitle>
             </CardHeader>
-            <CardContent class="space-y-4">
+            <CardContent class="space-y-6">
               {next.requiredFields.map((f) => (
                 <FieldFromTemplate field={f} />
               ))}
@@ -264,8 +326,7 @@ publicConsentsRoute.get('/:token/consents', async (c) => {
 
           {next.requiresSignature ? <SignaturePad /> : null}
 
-          <div class="flex justify-between items-center">
-            <p class="text-xs text-muted-foreground">Token: {token.slice(0, 4)}…</p>
+          <div class="flex justify-end">
             <Button type="submit" size="lg">
               {next.requiresSignature ? 'Sign and continue' : 'Acknowledge and continue'}
             </Button>
@@ -275,6 +336,25 @@ publicConsentsRoute.get('/:token/consents', async (c) => {
     </Layout>,
   );
 });
+
+// Tailwind arbitrary-variant classes that style the rendered consent body.
+// Keeps us off `@tailwindcss/typography` (no extra dep) at the cost of a
+// long string per-render; CSS is in the static bundle anyway.
+const CONSENT_PROSE_CLASS = [
+  'text-sm leading-relaxed max-h-[28rem] overflow-auto pr-2',
+  '[&_h1]:text-xl [&_h1]:font-semibold [&_h1]:mt-0 [&_h1]:mb-3',
+  '[&_h2]:text-lg [&_h2]:font-semibold [&_h2]:mt-5 [&_h2]:mb-2',
+  '[&_h3]:text-base [&_h3]:font-semibold [&_h3]:mt-4 [&_h3]:mb-2',
+  '[&_p]:mb-3',
+  '[&_ul]:list-disc [&_ul]:pl-6 [&_ul]:mb-3 [&_ul]:space-y-1',
+  '[&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:mb-3 [&_ol]:space-y-1',
+  '[&_li]:leading-relaxed',
+  '[&_strong]:font-semibold [&_strong]:text-foreground',
+  '[&_em]:italic',
+  '[&_a]:text-primary [&_a]:underline-offset-4 hover:[&_a]:underline',
+  '[&_hr]:my-4 [&_hr]:border-border',
+  '[&_code]:font-mono [&_code]:text-xs [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded',
+].join(' ');
 
 publicConsentsRoute.post(
   '/:token/consents',

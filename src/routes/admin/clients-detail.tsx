@@ -112,6 +112,7 @@ adminClientsDetailRoute.get('/:id', async (c) => {
 
   const sigs = await db
     .select({
+      id: consentSignatures.id,
       templateId: consentSignatures.templateId,
       signedAt: consentSignatures.signedAt,
       pdfStoragePath: consentSignatures.pdfStoragePath,
@@ -337,9 +338,22 @@ adminClientsDetailRoute.get('/:id', async (c) => {
                     <span>{title}</span>
                     {r.requiresSignature ? (
                       sig ? (
-                        <Badge variant="success">
-                          signed {sig.signedAt.toISOString().slice(0, 10)}
-                        </Badge>
+                        sig.pdfStoragePath ? (
+                          <a
+                            href={`/admin/clients/${row.retreatId}/consents/${sig.id}/pdf`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="Download signed PDF (opens in new tab)"
+                          >
+                            <Badge variant="success">
+                              signed {sig.signedAt.toISOString().slice(0, 10)} ↗
+                            </Badge>
+                          </a>
+                        ) : (
+                          <Badge variant="success">
+                            signed {sig.signedAt.toISOString().slice(0, 10)} (PDF pending)
+                          </Badge>
+                        )
                       ) : (
                         <Badge variant="destructive">not yet signed</Badge>
                       )
