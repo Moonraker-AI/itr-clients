@@ -101,7 +101,9 @@ const LOGO_MARK = (
   <img
     src="/static/brand/logo.png"
     alt=""
-    class="h-7 w-7 shrink-0"
+    width="32"
+    height="32"
+    class="h-8 w-8 shrink-0 object-contain"
     onerror="this.style.display='none'"
   />
 );

@@ -5,15 +5,55 @@ exercises the full happy path plus 1–2 failure branches. Allow ~30 minutes.
 
 ## 0. Prereqs (one time)
 
-- Local checkout up to date (`git pull`)
-- Cloud SQL proxy running against dev:
-  ```bash
-  cloud-sql-proxy --address 0.0.0.0 --port 5432 \
-    <DEV_PROJECT>:us-central1:<DEV_INSTANCE>
-  ```
-- `.env.local` points `LOCAL_DB_URL=postgres://itr-app:<pwd>@localhost:5432/itr_clients`
-  (password URL-encoded — see [feedback_dsn_encoding](../.claude/projects/.../memory/feedback_dsn_encoding.md))
-- Stripe **test-mode** keys bound to dev (`stripe-secret-key` secret in dev project starts with `sk_test_`)
+### a. Discover the dev project + instance
+
+```bash
+# Lists both projects (dev + prod). Pick the dev one.
+gcloud projects list --filter='project_id ~ itr'
+
+# Set as default for the rest of this session
+export DEV_PROJECT=<dev-project-id-from-above>
+
+# The instance name is fixed across envs
+export DEV_INSTANCE="$DEV_PROJECT:us-central1:itr-postgres-dev"
+echo "$DEV_INSTANCE"
+```
+
+### b. Pull the dev DSN out of Secret Manager
+
+The `db-url` secret holds the full Cloud-SQL-socket DSN. We swap the
+unix-socket host for `localhost:5432` to talk through the proxy.
+
+```bash
+# Full secret value (single line)
+DB_URL=$(gcloud secrets versions access latest --secret=db-url --project="$DEV_PROJECT")
+
+# Rewrite for local proxy: replace `?host=/cloudsql/...` with localhost:5432
+LOCAL_DB_URL=$(echo "$DB_URL" | sed -E 's|@/([^?]+)\?host=[^&]+|@localhost:5432/\1|')
+echo "$LOCAL_DB_URL"
+# → postgres://itr-app:<encoded-pwd>@localhost:5432/itr_clients
+```
+
+(Save to `.env.local` or `export LOCAL_DB_URL=...` in the shell that runs the seeder.)
+
+### c. Start the Cloud SQL proxy
+
+In a **separate terminal**, leave this running:
+
+```bash
+cloud-sql-proxy --address 0.0.0.0 --port 5432 "$DEV_INSTANCE"
+```
+
+(Install via `gcloud components install cloud-sql-proxy` if you don't have it.)
+
+### d. Verify Stripe test mode (P0 #3)
+
+```bash
+gcloud secrets versions access latest --secret=stripe-secret-key --project="$DEV_PROJECT" | head -c 8
+# → sk_test_   ← dev should be this
+```
+
+For prod: same command with `--project=$PROD_PROJECT`. Should print `sk_live_`.
 
 ## 1. Seed a smoke retreat
 
