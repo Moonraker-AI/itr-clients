@@ -12,7 +12,7 @@
 
 import { Hono } from 'hono';
 import { raw } from 'hono/html';
-import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, or, sql } from 'drizzle-orm';
 
 import { getDb } from '../../db/client.js';
 import { clients, retreats, therapists } from '../../db/schema.js';
@@ -28,6 +28,7 @@ import {
   Card,
   CardContent,
   CsrfInput,
+  Input,
   Layout,
   LinkButton,
   PageHeader,
@@ -95,6 +96,9 @@ adminDashboardRoute.get('/', async (c) => {
   // UUID shape guard so a malformed `?therapist=` value can't reach drizzle
   // and surface as a database-level error.
   const therapistFilter = UUID_RE.test(therapistFilterRaw) ? therapistFilterRaw : '';
+  // Free-text search across client first/last name + email. Capped at
+  // 100 chars to keep the URL sane and to bound the LIKE pattern length.
+  const qFilter = (c.req.query('q') ?? '').trim().slice(0, 100);
 
   // NaN guards - Number("not-a-num") is NaN; coerce to defaults.
   const limitRaw = Number(c.req.query('limit') ?? DEFAULT_LIMIT);
@@ -125,6 +129,19 @@ adminDashboardRoute.get('/', async (c) => {
   } else if (therapistFilter) {
     conditions.push(eq(retreats.therapistId, therapistFilter));
   }
+  if (qFilter) {
+    // Escape SQL-LIKE metacharacters in the user input so a search for
+    // "smith_jones%" matches the literal substring instead of widening
+    // the pattern. Then wrap in `%...%` for substring semantics.
+    const escaped = qFilter.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+    const pattern = `%${escaped}%`;
+    const orClause = or(
+      ilike(clients.firstName, pattern),
+      ilike(clients.lastName, pattern),
+      ilike(clients.email, pattern),
+    );
+    if (orClause) conditions.push(orClause);
+  }
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 
   const rows = await db
@@ -152,6 +169,10 @@ adminDashboardRoute.get('/', async (c) => {
   const countRows = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(retreats)
+    // Join clients so the same WHERE (which may reference clients
+    // columns when ?q= is set) is satisfiable. The retreats→clients
+    // FK is required so the join doesn't drop rows.
+    .innerJoin(clients, eq(retreats.clientId, clients.id))
     .where(where);
   const total = Number(countRows[0]?.count ?? 0);
 
@@ -167,6 +188,7 @@ adminDashboardRoute.get('/', async (c) => {
     const params = new URLSearchParams();
     if (stateFilter) params.set('state', stateFilter);
     if (therapistFilter) params.set('therapist', therapistFilter);
+    if (qFilter) params.set('q', qFilter);
     if (limit !== DEFAULT_LIMIT) params.set('limit', String(limit));
     if (off !== 0) params.set('offset', String(off));
     const s = params.toString();
@@ -202,6 +224,15 @@ adminDashboardRoute.get('/', async (c) => {
         <Card class="mb-6">
           <CardContent class="pt-6">
             <form method="get" class="flex flex-wrap items-end gap-3">
+              <div class="space-y-1.5">
+                <label class="text-xs text-muted-foreground">Search</label>
+                <Input
+                  name="q"
+                  value={qFilter}
+                  placeholder="client name or email"
+                  class="min-w-[220px]"
+                />
+              </div>
               <div class="space-y-1.5">
                 <label class="text-xs text-muted-foreground">State</label>
                 <Select name="state" class="min-w-[180px]">
