@@ -27,7 +27,13 @@ import { publicPaymentRoute } from './routes/public/payment.js';
 import { PREPAINT_THEME_SHA } from './lib/csp.js';
 import { log } from './lib/phi-redactor.js';
 import { clientIp, createRateLimiter } from './lib/rate-limit.js';
+import { captureError, flushSentry, initSentry } from './lib/sentry.js';
 import { parseTraceId, runWithTrace } from './lib/trace-context.js';
+
+// Init before any request handler runs so app.onError can captureException
+// without losing the early-boot errors. Idempotent + a no-op when SENTRY_DSN
+// is unset (local + CI default).
+initSentry();
 
 const app = new Hono();
 
@@ -200,7 +206,9 @@ if (!webhookOnly) {
 
 app.notFound((c) => c.json({ error: 'not_found' }, 404));
 
-// Last-resort error handler. All log fields go through the PHI redactor.
+// Last-resort error handler. All log fields go through the PHI redactor;
+// Sentry capture is gated on SENTRY_DSN being set and runs the same
+// redactor on the structured context before transmission.
 app.onError((err, c) => {
   log.error('unhandled_error', {
     error: err.message,
@@ -208,6 +216,10 @@ app.onError((err, c) => {
     path: c.req.path,
     method: c.req.method,
     revision: process.env.K_REVISION ?? 'local',
+  });
+  captureError(err, {
+    request: { path: c.req.path, method: c.req.method },
+    runtime: { revision: process.env.K_REVISION ?? 'local' },
   });
   return c.json({ error: 'internal_error' }, 500);
 });
@@ -242,6 +254,14 @@ const server = serve({ fetch: app.fetch, port }, (info) => {
 const shutdown = (signal: string) => {
   log.info('shutdown', { signal });
   server.close(async () => {
+    try {
+      // Flush queued Sentry events first — once the DB pool closes any
+      // capture call inside post-pool teardown will be lost. 1.5s budget
+      // sits comfortably inside the 9s SIGTERM window above.
+      await flushSentry(1500);
+    } catch {
+      // No-op if Sentry transport hangs; never block shutdown on it.
+    }
     try {
       const { pool } = await getDb();
       await pool.end();
