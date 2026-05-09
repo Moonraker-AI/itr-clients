@@ -18,6 +18,7 @@ import {
   consentTemplates,
   emailLog,
   locations,
+  payments,
   retreatRequiredConsents,
   retreats,
   therapists,
@@ -152,6 +153,38 @@ adminClientsDetailRoute.get('/:id', async (c) => {
     .where(eq(emailLog.retreatId, id))
     .orderBy(desc(emailLog.sentAt))
     .limit(20);
+
+  const paymentRows = await db
+    .select({
+      id: payments.id,
+      kind: payments.kind,
+      status: payments.status,
+      amountCents: payments.amountCents,
+      stripePaymentIntentId: payments.stripePaymentIntentId,
+      failureCode: payments.failureCode,
+      failureMessage: payments.failureMessage,
+      attemptCount: payments.attemptCount,
+      createdAt: payments.createdAt,
+    })
+    .from(payments)
+    .where(eq(payments.retreatId, id))
+    .orderBy(desc(payments.createdAt));
+
+  // Stripe dashboard mode: pick `/test/` segment when our secret key is
+  // a test-mode key, otherwise live. Restricted keys (`rk_*`) follow the
+  // same `_test_`/`_live_` convention as secret keys (`sk_*`).
+  const stripeKey = process.env.STRIPE_SECRET_KEY ?? '';
+  const stripeMode = /_test_/.test(stripeKey) ? 'test' : 'live';
+  const stripeBase =
+    stripeMode === 'test'
+      ? 'https://dashboard.stripe.com/test'
+      : 'https://dashboard.stripe.com';
+  const stripePiUrl = (pi: string): string | null => {
+    // Skip our synthetic PI placeholders (e.g. final_zero_<retreatId>) which
+    // are written for $0 final-charge rows and have no Stripe object.
+    if (!pi || pi.startsWith('final_zero_')) return null;
+    return `${stripeBase}/payments/${pi}`;
+  };
 
   const publicBase = process.env.PUBLIC_BASE_URL ?? `${c.req.url.split('/admin')[0]}`;
   const publicUrl = `${publicBase}/c/${row.clientToken}`;
@@ -412,6 +445,94 @@ adminClientsDetailRoute.get('/:id', async (c) => {
                       </Td>
                     </Tr>
                   ))}
+                </Tbody>
+              </Table>
+            </CardContent>
+          </details>
+        </Card>
+
+        <Card>
+          <details class="group">
+            <summary class={SUMMARY_CLASS}>
+              <CardTitle>
+                Payments{' '}
+                <span class="text-sm font-normal text-muted-foreground">
+                  ({paymentRows.length}) · Stripe {stripeMode} mode
+                </span>
+              </CardTitle>
+              <span class="text-muted-foreground transition-transform group-open:rotate-180">
+                ▾
+              </span>
+            </summary>
+            <CardContent class="px-0">
+              <Table>
+                <Thead>
+                  <Tr>
+                    <Th>Created</Th>
+                    <Th>Kind</Th>
+                    <Th>Amount</Th>
+                    <Th>Status</Th>
+                    <Th>Attempts</Th>
+                    <Th>PaymentIntent</Th>
+                  </Tr>
+                </Thead>
+                <Tbody>
+                  {paymentRows.length === 0 ? (
+                    <Tr>
+                      <Td colspan={6} class="text-center text-sm text-muted-foreground py-6">
+                        No payments yet.
+                      </Td>
+                    </Tr>
+                  ) : (
+                    paymentRows.map((p) => {
+                      const piUrl = p.stripePaymentIntentId
+                        ? stripePiUrl(p.stripePaymentIntentId)
+                        : null;
+                      const failed = p.status === 'failed';
+                      return (
+                        <Tr>
+                          <Td class="text-xs text-muted-foreground whitespace-nowrap">
+                            {p.createdAt.toISOString()}
+                          </Td>
+                          <Td class="text-sm">{p.kind}</Td>
+                          <Td class="text-sm font-medium">{formatCents(p.amountCents)}</Td>
+                          <Td>
+                            {failed ? (
+                              <div class="flex flex-col gap-0.5">
+                                <Badge variant="destructive">{p.status}</Badge>
+                                {p.failureCode || p.failureMessage ? (
+                                  <span class="text-xs text-muted-foreground">
+                                    {p.failureCode ?? ''}
+                                    {p.failureCode && p.failureMessage ? ': ' : ''}
+                                    {p.failureMessage ?? ''}
+                                  </span>
+                                ) : null}
+                              </div>
+                            ) : (
+                              <Badge variant="secondary">{p.status}</Badge>
+                            )}
+                          </Td>
+                          <Td class="text-xs text-muted-foreground">{p.attemptCount}</Td>
+                          <Td>
+                            {piUrl ? (
+                              <a
+                                href={piUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                class="font-mono text-xs underline hover:text-primary"
+                              >
+                                {p.stripePaymentIntentId} ↗
+                              </a>
+                            ) : (
+                              <code class="font-mono text-xs text-muted-foreground">
+                                {p.stripePaymentIntentId ?? '—'}
+                              </code>
+                            )}
+                          </Td>
+                        </Tr>
+                      );
+                    })
+                  )}
                 </Tbody>
               </Table>
             </CardContent>
