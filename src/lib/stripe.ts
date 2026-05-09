@@ -119,6 +119,55 @@ function assertMetadata(meta: Record<string, string> | undefined): void {
   }
 }
 
+/**
+ * Phase C (v0.25.0). Resolve destination-charge params for a charge.
+ *
+ * Caller hands us the therapist's `stripe_connect_account_id` and
+ * `therapist_payout_pct`. We translate those into the PaymentIntent fields
+ * Stripe expects:
+ *   - `transfer_data[destination]` — therapist's Connect account
+ *   - `application_fee_amount`     — platform's cut, in cents
+ *
+ * NULL connect id ⇒ legacy direct-charge flow (no destination, no app fee).
+ *
+ * Floor (not round) the platform fee so therapists never receive less than
+ * (pct/100 * amount) due to rounding. The platform absorbs sub-cent
+ * remainders. Stripe rejects `application_fee_amount > amount`, so we also
+ * clamp at `amount` for the pathological 0% payout case.
+ *
+ * Bambi at 100% pct ⇒ application_fee_amount = 0; entire charge transfers.
+ */
+function buildConnectParams(args: {
+  connectAccountId: string | null;
+  payoutPct: string | number | null;
+  amountCents: number;
+}): {
+  transferData: { destination: string } | null;
+  applicationFeeAmount: number | null;
+} {
+  if (!args.connectAccountId) {
+    return { transferData: null, applicationFeeAmount: null };
+  }
+  const pctRaw =
+    typeof args.payoutPct === 'string' ? Number(args.payoutPct) : args.payoutPct;
+  if (pctRaw == null || !Number.isFinite(pctRaw)) {
+    throw new Error(
+      `buildConnectParams: payoutPct required when connectAccountId set (got ${String(args.payoutPct)})`,
+    );
+  }
+  if (pctRaw < 0 || pctRaw > 100) {
+    throw new Error(`buildConnectParams: payoutPct out of range: ${pctRaw}`);
+  }
+  const platformFee = Math.min(
+    args.amountCents,
+    Math.floor(((100 - pctRaw) / 100) * args.amountCents),
+  );
+  return {
+    transferData: { destination: args.connectAccountId },
+    applicationFeeAmount: platformFee,
+  };
+}
+
 let cachedClient: Stripe | null = null;
 
 function getClient(): Stripe | null {
@@ -136,7 +185,7 @@ function getClient(): Stripe | null {
     // Keep `appInfo.version` in lockstep with `package.json` "version".
     // Stripe surfaces this string in their dashboard's API request log so
     // mismatched values make per-revision debugging harder than it needs.
-    appInfo: { name: 'itr-client-hq', version: '0.8.10' },
+    appInfo: { name: 'itr-client-hq', version: '0.25.0' },
     timeout: 15_000,
     maxNetworkRetries: 2,
   });
@@ -213,6 +262,21 @@ export interface CreateDepositSessionArgs {
   paymentMethod: 'card';
   successUrl: string;
   cancelUrl: string;
+  /**
+   * Phase C (v0.25.0). Therapist's Stripe Connect account; when present the
+   * checkout becomes a destination charge: Stripe routes therapist's share
+   * automatically at capture and keeps `application_fee_amount` on the
+   * platform. NULL preserves the legacy direct-charge flow (e.g. Ross,
+   * platform-owner rows).
+   */
+  connectAccountId?: string | null;
+  /**
+   * Therapist's payout share (0..100). Required when `connectAccountId` is
+   * set. 100 means application_fee_amount=0 — all funds to the therapist
+   * (today only Bambi). Caller may pass either string ('80', from drizzle's
+   * numeric type) or number.
+   */
+  payoutPct?: string | number | null;
 }
 
 export interface CreateSessionResult {
@@ -243,6 +307,12 @@ export async function createDepositCheckoutSession(
     return { sessionId, url: args.successUrl, dryRun: true };
   }
 
+  const connect = buildConnectParams({
+    connectAccountId: args.connectAccountId ?? null,
+    payoutPct: args.payoutPct ?? null,
+    amountCents: args.depositCents,
+  });
+
   const client = getClient()!;
   const session = await client.checkout.sessions.create({
     mode: 'payment',
@@ -264,6 +334,10 @@ export async function createDepositCheckoutSession(
       description,
       metadata,
       statement_descriptor_suffix: STATEMENT_DESCRIPTOR.slice(0, 22),
+      ...(connect.transferData ? { transfer_data: connect.transferData } : {}),
+      ...(connect.applicationFeeAmount != null
+        ? { application_fee_amount: connect.applicationFeeAmount }
+        : {}),
     },
     metadata,
     success_url: args.successUrl,
@@ -302,6 +376,10 @@ export interface ChargeFinalBalanceArgs {
   amountCents: number;
   /** Idempotency key for the PaymentIntent create. */
   idempotencyKey: string;
+  /** See CreateDepositSessionArgs.connectAccountId. NULL = legacy direct charge. */
+  connectAccountId?: string | null;
+  /** See CreateDepositSessionArgs.payoutPct. */
+  payoutPct?: string | number | null;
 }
 
 export interface ChargeFinalBalanceResult {
@@ -351,6 +429,12 @@ export async function chargeFinalBalance(
     };
   }
 
+  const connect = buildConnectParams({
+    connectAccountId: args.connectAccountId ?? null,
+    payoutPct: args.payoutPct ?? null,
+    amountCents: args.amountCents,
+  });
+
   const client = getClient()!;
   try {
     const pi = await client.paymentIntents.create(
@@ -364,6 +448,10 @@ export async function chargeFinalBalance(
         description,
         metadata,
         statement_descriptor_suffix: STATEMENT_DESCRIPTOR.slice(0, 22),
+        ...(connect.transferData ? { transfer_data: connect.transferData } : {}),
+        ...(connect.applicationFeeAmount != null
+          ? { application_fee_amount: connect.applicationFeeAmount }
+          : {}),
       },
       { idempotencyKey: args.idempotencyKey },
     );

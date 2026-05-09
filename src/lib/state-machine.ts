@@ -34,6 +34,7 @@ import {
   retreatRequiredConsents,
   retreats,
   stripeCustomers,
+  therapists,
 } from '../db/schema.js';
 import { buildIcs } from './ics.js';
 import { notify } from './notifications.js';
@@ -1179,6 +1180,16 @@ async function runRetry(args: {
     };
   }
 
+  // Phase C (v0.25.0). Load therapist Connect routing for destination
+  // charge. NULL connect id keeps the legacy direct-charge flow.
+  const [t] = await db
+    .select({
+      connectAccountId: therapists.stripeConnectAccountId,
+      payoutPct: therapists.therapistPayoutPct,
+    })
+    .from(therapists)
+    .where(eq(therapists.id, r.therapistId));
+
   const charge = await chargeFinalBalance({
     retreatId: args.retreatId,
     clientId: r.clientId,
@@ -1186,6 +1197,8 @@ async function runRetry(args: {
     paymentMethodId: sc.defaultPaymentMethodId,
     amountCents: balance,
     idempotencyKey: `final:${args.retreatId}:${attempt}`,
+    connectAccountId: t?.connectAccountId ?? null,
+    payoutPct: t?.payoutPct ?? null,
   });
 
   if (charge.status === 'succeeded') {

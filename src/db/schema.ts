@@ -78,6 +78,16 @@ export const paymentStatus = pgEnum('payment_status', [
   'refunded',
 ]);
 
+// Phase C (v0.25.0). Mirrors Stripe transfer lifecycle. `pending` is our
+// pre-webhook insert; Stripe events drive the rest.
+export const payoutStatus = pgEnum('payout_status', [
+  'pending',
+  'in_transit',
+  'paid',
+  'failed',
+  'reversed',
+]);
+
 export const locations = pgTable('locations', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
@@ -481,6 +491,37 @@ export const payments = pgTable(
   }),
 );
 
+/**
+ * Stripe Connect payout ledger (Phase C, v0.25.0). One row per Stripe
+ * `transfer.created` event we observe under destination charges. The cron +
+ * webhook handlers reconcile lifecycle into `status`.
+ */
+export const payouts = pgTable('payouts', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  retreatId: uuid('retreat_id').references(() => retreats.id, {
+    onDelete: 'set null',
+  }),
+  paymentId: uuid('payment_id').references(() => payments.id, {
+    onDelete: 'set null',
+  }),
+  therapistId: uuid('therapist_id')
+    .notNull()
+    .references(() => therapists.id),
+  stripeTransferId: text('stripe_transfer_id').unique(),
+  destinationAccountId: text('destination_account_id').notNull(),
+  amountCents: integer('amount_cents').notNull(),
+  status: payoutStatus('status').notNull().default('pending'),
+  failureCode: text('failure_code'),
+  failureMessage: text('failure_message'),
+  attemptCount: integer('attempt_count').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 export type Therapist = typeof therapists.$inferSelect;
 export type Location = typeof locations.$inferSelect;
 export type PricingConfig = typeof pricingConfig.$inferSelect;
@@ -493,3 +534,4 @@ export type EmailLog = typeof emailLog.$inferSelect;
 export type NotificationRecipient = typeof notificationRecipients.$inferSelect;
 export type StripeCustomer = typeof stripeCustomers.$inferSelect;
 export type Payment = typeof payments.$inferSelect;
+export type Payout = typeof payouts.$inferSelect;

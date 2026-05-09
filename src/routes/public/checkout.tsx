@@ -11,7 +11,13 @@ import { Hono } from 'hono';
 import { and, desc, eq } from 'drizzle-orm';
 
 import { getDb } from '../../db/client.js';
-import { clients, payments, retreats, stripeCustomers } from '../../db/schema.js';
+import {
+  clients,
+  payments,
+  retreats,
+  stripeCustomers,
+  therapists,
+} from '../../db/schema.js';
 import { formatCents } from '../../lib/pricing.js';
 import { log } from '../../lib/phi-redactor.js';
 import {
@@ -86,6 +92,8 @@ publicCheckoutRoute.get('/:token/checkout', async (c) => {
     paymentMethod: 'card',
     successUrl,
     cancelUrl,
+    connectAccountId: ctx.connectAccountId,
+    payoutPct: ctx.payoutPct,
   });
 
   log.info('checkout_session_created', {
@@ -204,9 +212,13 @@ async function loadRetreatContextByToken(token: string) {
       firstName: clients.firstName,
       lastName: clients.lastName,
       email: clients.email,
+      // Phase C (v0.25.0). NULL connect id ⇒ legacy direct charge.
+      connectAccountId: therapists.stripeConnectAccountId,
+      payoutPct: therapists.therapistPayoutPct,
     })
     .from(retreats)
     .innerJoin(clients, eq(retreats.clientId, clients.id))
+    .innerJoin(therapists, eq(retreats.therapistId, therapists.id))
     .where(eq(retreats.clientToken, token));
   return row ?? null;
 }
