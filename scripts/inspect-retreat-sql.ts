@@ -42,7 +42,7 @@ try {
   );
   console.log('audit events:', audits.rows);
   const emails = await pool.query(
-    `select recipient, template_name, gmail_message_id, sent_at from email_log where retreat_id = $1 order by sent_at`,
+    `select recipient, template_name, message_id, status, bounced_at, bounce_reason, sent_at from email_log where retreat_id = $1 order by sent_at`,
     [RID],
   );
   console.log('email log:', emails.rows);

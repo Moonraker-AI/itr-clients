@@ -230,7 +230,7 @@ export async function notify(args: NotifyArgs): Promise<void> {
         retreatId: args.retreatId,
         recipient: to,
         templateName: composed.templateName,
-        gmailMessageId: res.messageId,
+        messageId: res.messageId,
         status: 'sent',
       });
     } catch (err) {
@@ -250,7 +250,7 @@ export async function notify(args: NotifyArgs): Promise<void> {
           retreatId: args.retreatId,
           recipient: to,
           templateName: composed.templateName,
-          gmailMessageId: null,
+          messageId: null,
           status: 'failed',
         });
       } catch (logErr) {

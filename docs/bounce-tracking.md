@@ -2,9 +2,42 @@
 
 ## Status
 
-**Design doc, not yet implemented.** `email_log.status` already supports
-the `'bounced'` enum value but no code path writes it. This doc captures
-the implementation plan + the cheaper interim option.
+**Implemented in v0.12.0.** Code paths now write `status='bounced'` on
+hard bounces (5.x.x). Two ops steps must complete before the cron does
+anything in prod — see "Post-merge activation" below.
+
+### What shipped
+
+- `email_log.message_id` now stores the RFC 5322 Message-ID we generate
+  at send time (migration 0007 renamed from `gmail_message_id`).
+- `email_log.bounced_at` and `email_log.bounce_reason` columns added.
+- `gmail.ts` exports `listBounces()` + `parseDsn()` (RFC 3464).
+- `/api/cron/scan-bounces` is mounted, guarded by `verifyCronSecret`.
+- Admin retreat detail badges `bounced` as destructive with reason.
+
+### Post-merge activation
+
+The cron is wired but is a **no-op until two ops steps are done**:
+
+1. **Workspace DWD scope grant** — the bounce-scan service account must
+   be authorized for `https://www.googleapis.com/auth/gmail.readonly` on
+   `clients@intensivetherapyretreat.com`. Update the existing DWD entry
+   (Workspace admin → Security → API controls → Domain-wide delegation)
+   to include both scopes:
+   - `https://www.googleapis.com/auth/gmail.send` (existing)
+   - `https://www.googleapis.com/auth/gmail.readonly` (new)
+2. **Cloud Scheduler job** — see "Cloud Scheduler" section below for the
+   gcloud command. Run it for both `itr-clients-dev` and
+   `itr-clients-prod`.
+
+Until step 1 is done, calls to `listBounces()` fail with
+`Insufficient Permission` and the cron returns `{ found: 0, ... }`.
+
+### Interim manual workaround (still relevant for old rows)
+
+Pre-0007 sends stored Gmail's internal id in `email_log`, not the RFC
+Message-ID, so the cron cannot match those rows. For any retreat sent
+before 2026-05-07, fall back to the manual inbox check below.
 
 ## Why this matters
 

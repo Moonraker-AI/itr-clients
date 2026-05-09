@@ -7,6 +7,7 @@ import { getDb } from './db/client.js';
 import { stripeWebhookRoute } from './routes/api/webhooks-stripe.js';
 import { cronStateTransitionsRoute } from './routes/api/cron-state-transitions.js';
 import { cronRetryFailedChargesRoute } from './routes/api/cron-retry-failed-charges.js';
+import { cronScanBouncesRoute } from './routes/api/cron-scan-bounces.js';
 import { authSessionRoute } from './routes/api/auth-session.js';
 import { adminCancelRoute } from './routes/admin/cancel.js';
 import { adminClientsDetailRoute } from './routes/admin/clients-detail.js';
@@ -194,6 +195,7 @@ if (!webhookOnly) {
   app.route('/c', publicPaymentRoute);
   app.route('/api/cron', cronStateTransitionsRoute);
   app.route('/api/cron', cronRetryFailedChargesRoute);
+  app.route('/api/cron', cronScanBouncesRoute);
 }
 
 app.notFound((c) => c.json({ error: 'not_found' }, 404));
