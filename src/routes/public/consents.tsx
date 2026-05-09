@@ -330,6 +330,17 @@ publicConsentsRoute.get('/:token/view/:templateName', async (c) => {
   const substituted = substitute(tpl.body, buildTemplateVars(ctx));
   const bodyHtml = marked.parse(substituted, { async: false }) as string;
 
+  // v0.24.1: when the retreat is still in awaiting_consents and this
+  // specific template is unsigned, render the signing form inline
+  // instead of a read-only view. Previously the page only showed body
+  // markdown when sig was null, leaving the user no path to sign without
+  // backing out to /consents (which queue-jumps to next-unsigned and
+  // won't let you target a specific template by name).
+  let unsignedForSigning: UnsignedTemplate | null = null;
+  if (!sig && ctx.retreatState === 'awaiting_consents') {
+    unsignedForSigning = await loadUnsignedByName(ctx.retreatId, templateName);
+  }
+
   return c.html(
     <Layout title={`${title} - Intensive Therapy Retreats`}>
       <ClientShell width="xl">
@@ -343,6 +354,32 @@ publicConsentsRoute.get('/:token/view/:templateName', async (c) => {
             <div class={CONSENT_PROSE_CLASS}>{raw(bodyHtml)}</div>
           </CardContent>
         </Card>
+
+        {unsignedForSigning ? (
+          <form method="post" action={`/c/${token}/consents`} class="space-y-6">
+            <input type="hidden" name="template_name" value={unsignedForSigning.name} />
+            <Card>
+              <CardHeader>
+                <CardTitle>Required information</CardTitle>
+              </CardHeader>
+              <CardContent class="space-y-6">
+                {unsignedForSigning.requiredFields.map((f) => (
+                  <FieldFromTemplate field={f} />
+                ))}
+              </CardContent>
+            </Card>
+
+            {unsignedForSigning.requiresSignature ? <SignaturePad /> : null}
+
+            <div class="flex justify-end">
+              <Button type="submit" size="lg">
+                {unsignedForSigning.requiresSignature
+                  ? 'Sign and continue'
+                  : 'Acknowledge and continue'}
+              </Button>
+            </div>
+          </form>
+        ) : null}
 
         {sig ? (
           <>
@@ -581,11 +618,17 @@ publicConsentsRoute.post(
       return c.redirect(`/c/${token}`);
     }
 
-    const next = await loadNextUnsigned(ctx.retreatId);
-    if (!next) return c.redirect(`/c/${token}`);
-
+    // v0.24.1: when posted from /view/:templateName the form carries a
+    // hidden template_name so the user can sign out of queue order.
+    // When posted from the queue-driven /consents GET it's absent, and
+    // we fall back to the next-unsigned template.
     const form = await c.req.formData();
     const get = (k: string) => (form.get(k) as string | null) ?? '';
+    const targetTemplateName = get('template_name').trim();
+    const next = targetTemplateName
+      ? await loadUnsignedByName(ctx.retreatId, targetTemplateName)
+      : await loadNextUnsigned(ctx.retreatId);
+    if (!next) return c.redirect(`/c/${token}`);
 
     const signatureDataUrl = get('signature_data_url');
     const signedName = get('signed_name').trim();
@@ -750,6 +793,55 @@ interface UnsignedTemplate {
   bodyMarkdown: string;
   requiresSignature: boolean;
   requiredFields: TemplateRequiredField[];
+}
+
+/**
+ * v0.24.1. Returns the named template if it's required for this retreat
+ * AND not yet signed. Lets the user sign consents out of the natural
+ * queue order — clicking "Information and Consent for Treatment" on
+ * the status page lands on its own signing form instead of a read-only
+ * view that omits the signature pad.
+ */
+async function loadUnsignedByName(
+  retreatId: string,
+  templateName: string,
+): Promise<UnsignedTemplate | null> {
+  const { db } = await getDb();
+  const [row] = await db
+    .select({
+      templateId: retreatRequiredConsents.templateId,
+      name: consentTemplates.name,
+      version: consentTemplates.version,
+      bodyMarkdown: consentTemplates.bodyMarkdown,
+      requiresSignature: consentTemplates.requiresSignature,
+      requiredFields: consentTemplates.requiredFields,
+    })
+    .from(retreatRequiredConsents)
+    .innerJoin(consentTemplates, eq(retreatRequiredConsents.templateId, consentTemplates.id))
+    .where(
+      and(
+        eq(retreatRequiredConsents.retreatId, retreatId),
+        eq(consentTemplates.name, templateName),
+      ),
+    );
+  if (!row) return null;
+
+  const [signed] = await db
+    .select({ id: consentSignatures.id })
+    .from(consentSignatures)
+    .where(
+      and(
+        eq(consentSignatures.retreatId, retreatId),
+        eq(consentSignatures.templateId, row.templateId),
+      ),
+    );
+  if (signed) return null;
+
+  return {
+    ...row,
+    title: getTemplate(row.name).meta.title,
+    requiredFields: (row.requiredFields ?? []) as TemplateRequiredField[],
+  };
 }
 
 async function loadNextUnsigned(retreatId: string): Promise<UnsignedTemplate | null> {
