@@ -120,22 +120,46 @@ function assertMetadata(meta: Record<string, string> | undefined): void {
 }
 
 /**
- * Phase C (v0.25.0). Resolve destination-charge params for a charge.
+ * Stripe US-card processing fee estimate. 2.9% + 30¢ is the standard
+ * baseline for domestic cards. Real fees vary by card type (intl +1.5%,
+ * premium rewards cards higher), and Connect Express adds a separate
+ * 0.25% + 25¢ on the connected-account portion. v0.27.0 absorbs all that
+ * variance on the platform side rather than running a balance_transaction
+ * true-up. If real-world deltas trend > $5/charge after a month of data,
+ * see the v0.28+ true-up path noted in PROJECT.md.
+ */
+const STRIPE_FEE_RATE_BPS = 290; // 2.9% in basis points
+const STRIPE_FEE_FLAT_CENTS = 30;
+
+function estimateStripeFeeCents(grossCents: number): number {
+  if (grossCents <= 0) return 0;
+  return Math.round((grossCents * STRIPE_FEE_RATE_BPS) / 10_000) + STRIPE_FEE_FLAT_CENTS;
+}
+
+/**
+ * Phase C (v0.25.0+, fee-deducted variant in v0.27.0). Resolve
+ * destination-charge params for a charge.
  *
- * Caller hands us the therapist's `stripe_connect_account_id` and
- * `therapist_payout_pct`. We translate those into the PaymentIntent fields
- * Stripe expects:
- *   - `transfer_data[destination]` — therapist's Connect account
- *   - `application_fee_amount`     — platform's cut, in cents
+ * Model: pre-deduct estimated Stripe processing fee from the GROSS amount,
+ * THEN apply the therapist's payout pct to the NET. Platform retains the
+ * difference, which covers the fee Stripe deducts from platform balance —
+ * leaving the platform's 40% net cleanly. Therapists are unaffected by fee
+ * variance; platform absorbs sub-cent rounding + ±estimate deltas.
  *
  * NULL connect id ⇒ legacy direct-charge flow (no destination, no app fee).
  *
- * Floor (not round) the platform fee so therapists never receive less than
- * (pct/100 * amount) due to rounding. The platform absorbs sub-cent
- * remainders. Stripe rejects `application_fee_amount > amount`, so we also
- * clamp at `amount` for the pathological 0% payout case.
+ * Bambi at 100% pct ⇒ therapist_share = entire NET, app_fee = est_fee.
+ * Stripe deducts the fee from platform balance via app_fee, platform nets 0,
+ * Bambi nets ~$970 on a $1000 charge.
  *
- * Bambi at 100% pct ⇒ application_fee_amount = 0; entire charge transfers.
+ * Math (gross G, pct P, est fee F):
+ *   net  = G - F
+ *   ts   = floor(net * P / 100)               // therapist transfer
+ *   fee  = G - ts                              // application_fee_amount
+ *
+ * `ts` floored so therapists never under-paid by sub-cent rounding;
+ * platform absorbs remainder. `fee` is clamped at `G` for the
+ * pathological pct=0 case (Stripe rejects app_fee > amount).
  */
 function buildConnectParams(args: {
   connectAccountId: string | null;
@@ -158,13 +182,16 @@ function buildConnectParams(args: {
   if (pctRaw < 0 || pctRaw > 100) {
     throw new Error(`buildConnectParams: payoutPct out of range: ${pctRaw}`);
   }
-  const platformFee = Math.min(
+  const estFeeCents = estimateStripeFeeCents(args.amountCents);
+  const netCents = Math.max(0, args.amountCents - estFeeCents);
+  const therapistShare = Math.floor((netCents * pctRaw) / 100);
+  const applicationFeeAmount = Math.min(
     args.amountCents,
-    Math.floor(((100 - pctRaw) / 100) * args.amountCents),
+    args.amountCents - therapistShare,
   );
   return {
     transferData: { destination: args.connectAccountId },
-    applicationFeeAmount: platformFee,
+    applicationFeeAmount,
   };
 }
 
@@ -185,7 +212,7 @@ function getClient(): Stripe | null {
     // Keep `appInfo.version` in lockstep with `package.json` "version".
     // Stripe surfaces this string in their dashboard's API request log so
     // mismatched values make per-revision debugging harder than it needs.
-    appInfo: { name: 'itr-client-hq', version: '0.26.0' },
+    appInfo: { name: 'itr-client-hq', version: '0.27.0' },
     timeout: 15_000,
     maxNetworkRetries: 2,
   });
@@ -581,6 +608,19 @@ export interface RefundPaymentArgs {
   idempotencyKey: string;
   retreatId: string;
   clientId: string;
+  /**
+   * Phase C (v0.27.0). True when the original charge used a destination
+   * transfer (`transfer_data.destination` was set). Adds:
+   *   - `reverse_transfer: true`        — debits connected account back
+   *   - `refund_application_fee: true`  — refunds platform's app fee
+   *   proportionally
+   * so a refund unwinds every leg of the original charge. False/legacy
+   * direct-charge refunds keep the pre-Phase-C behaviour.
+   *
+   * Note: Stripe processing fees are NOT refunded to the customer (Stripe
+   * keeps them on the original charge). Platform absorbs that sliver.
+   */
+  isDestinationCharge?: boolean;
 }
 
 export interface RefundPaymentResult {
@@ -622,6 +662,9 @@ export async function refundPayment(
       ...(args.amountCents != null ? { amount: args.amountCents } : {}),
       reason: 'requested_by_customer',
       metadata,
+      ...(args.isDestinationCharge
+        ? { reverse_transfer: true, refund_application_fee: true }
+        : {}),
     },
     { idempotencyKey: args.idempotencyKey },
   );
