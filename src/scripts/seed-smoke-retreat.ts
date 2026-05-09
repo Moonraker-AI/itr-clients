@@ -6,31 +6,32 @@
  * fresh client_token. Cleanup is manual (delete via SQL or admin cancel).
  *
  * Local dev usage (cloud-sql-proxy + LOCAL_DB_URL):
- *   tsx scripts/seed-smoke-retreat.ts
+ *   npm run smoke:retreat
  *
- * Cloud Run Job usage (against dev DB):
- *   gcloud run jobs deploy itr-smoke-seed \
- *     --image=$REGION-docker.pkg.dev/$PROJECT/itr/itr-client-hq:latest \
- *     --command=node --args=dist/scripts/seed-smoke-retreat.js \
- *     --set-cloudsql-instances=$INSTANCE \
- *     --set-secrets=DB_URL=db-url:latest
- *   gcloud run jobs execute itr-smoke-seed --region=$REGION
+ * Cloud Run Job usage (against dev/prod DB without local proxy):
+ *   bash scripts/run-smoke-seed.sh dev
+ *   bash scripts/run-smoke-seed.sh prod
+ *
+ * The Cloud Run Job (`itr-smoke-seed`) is deployed by the standard
+ * cloudbuild.yaml on every push to main / tag, mirroring the
+ * itr-migrate Job pattern. The Job is NOT auto-executed by Cloud
+ * Build — fire it manually via the helper script above when needed.
  */
 
 import { asc, eq } from 'drizzle-orm';
 
-import { getDb } from '../src/db/client.js';
+import { getDb } from '../db/client.js';
 import {
   clients,
   pricingConfig,
   retreatRequiredConsents,
   retreats,
   therapists,
-} from '../src/db/schema.js';
-import { syncConsentTemplatesToDb } from '../src/lib/consent-templates.js';
-import { computePrice } from '../src/lib/pricing.js';
-import { transitions } from '../src/lib/state-machine.js';
-import { generateClientToken } from '../src/lib/tokens.js';
+} from '../db/schema.js';
+import { syncConsentTemplatesToDb } from '../lib/consent-templates.js';
+import { computePrice } from '../lib/pricing.js';
+import { transitions } from '../lib/state-machine.js';
+import { generateClientToken } from '../lib/tokens.js';
 
 async function main() {
   const baseUrl = process.env.PUBLIC_BASE_URL ?? 'http://localhost:8080';
