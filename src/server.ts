@@ -79,7 +79,7 @@ app.use('*', async (c, next) => {
         "img-src 'self' data:",
         "style-src 'self' 'unsafe-inline'",
         `script-src 'self' ${PREPAINT_THEME_SHA} https://www.gstatic.com https://apis.google.com https://js.stripe.com`,
-        "connect-src 'self' https://*.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.gstatic.com https://apis.google.com https://api.stripe.com",
+        "connect-src 'self' https://*.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.gstatic.com https://apis.google.com https://api.stripe.com https://*.ingest.sentry.io https://*.sentry.io",
         "frame-src https://js.stripe.com https://*.stripe.com https://*.firebaseapp.com https://accounts.google.com",
         "frame-ancestors 'none'",
         "base-uri 'self'",

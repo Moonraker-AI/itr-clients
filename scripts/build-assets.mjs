@@ -62,3 +62,42 @@ for (const entry of jsEntries) {
   await copyFile(resolve(jsSrc, entry.name), resolve(jsDst, entry.name));
   console.log(`js: ${entry.name}`);
 }
+
+// JS Bundles -----------------------------------------------------------
+// Anything in src/assets/js-bundles/ is an entry that imports npm
+// packages (e.g. @sentry/browser) — bundled via esbuild into a single
+// minified file that lands at dist/static/js/<name>.js. CSP stays
+// 'self' because the output is same-origin.
+const jsBundleSrc = resolve(root, 'src/assets/js-bundles');
+let bundleEntries = [];
+try {
+  bundleEntries = await readdir(jsBundleSrc, { withFileTypes: true });
+} catch {
+  // Folder absent — nothing to bundle.
+}
+
+const bundleInputs = bundleEntries
+  .filter((e) => e.isFile() && extname(e.name).toLowerCase() === '.js')
+  .map((e) => e.name);
+
+if (bundleInputs.length > 0) {
+  // Lazy-load esbuild so projects without it (none today) don't fail.
+  const esbuild = await import('esbuild');
+  for (const name of bundleInputs) {
+    const entryPath = resolve(jsBundleSrc, name);
+    // Strip "-entry.js" suffix if present so foo-entry.js → foo.js.
+    const outName = name.replace(/-entry\.js$/, '.js');
+    const outPath = resolve(jsDst, outName);
+    await esbuild.build({
+      entryPoints: [entryPath],
+      bundle: true,
+      minify: true,
+      format: 'iife',
+      target: ['es2020'],
+      outfile: outPath,
+      logLevel: 'silent',
+      sourcemap: false,
+    });
+    console.log(`bundle: ${outName}`);
+  }
+}
