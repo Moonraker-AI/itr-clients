@@ -143,13 +143,7 @@ steps:
       # CRON_SHARED_SECRET (M9 fix #23) gates the /api/cron/* routes; the
       # main service refuses to start without it. Same secret value is
       # passed to Cloud Scheduler jobs as the X-Cron-Secret header.
-      # _SENTRY_SECRETS_PART is "" until SENTRY_DSN secret + the
-      # substitution are bound on the Cloud Build trigger; sentry.ts
-      # silently no-ops when the env var is unset.
-      # _SENTRY_BROWSER_SECRETS_PART (v0.21.0) is the analogous knob for
-      # the browser-side Sentry SDK; layout.tsx renders the script tag
-      # only when the env var is present.
-      - --set-secrets=DB_URL=db-url:latest,STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest,CRON_SHARED_SECRET=cron-shared-secret:latest$_GMAIL_SECRETS_PART$_SENTRY_SECRETS_PART$_SENTRY_BROWSER_SECRETS_PART
+      - --set-secrets=DB_URL=db-url:latest,STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest,CRON_SHARED_SECRET=cron-shared-secret:latest$_GMAIL_SECRETS_PART
       # Direct VPC egress so the Cloud SQL Node.js Connector can reach the
       # instance's private IP. private-ranges-only keeps public traffic on
       # Cloud Run's default egress (no NAT cost).
@@ -181,15 +175,13 @@ steps:
       - --concurrency=80
       - --timeout=30s
       - --set-env-vars=NODE_ENV=production,CLOUD_SQL_INSTANCE=$_CLOUD_SQL_INSTANCE,WEBHOOK_ONLY=1,GOOGLE_CLOUD_PROJECT=$_PROJECT
-      - --set-secrets=DB_URL=db-url:latest,STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest$_GMAIL_SECRETS_PART$_SENTRY_SECRETS_PART$_SENTRY_BROWSER_SECRETS_PART
+      - --set-secrets=DB_URL=db-url:latest,STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest$_GMAIL_SECRETS_PART
       - --network=default
       - --subnet=default
       - --vpc-egress=private-ranges-only
 
 substitutions:
   _GMAIL_SECRETS_PART: ''
-  _SENTRY_SECRETS_PART: ''
-  _SENTRY_BROWSER_SECRETS_PART: ''
   _AUTH_ENABLED: ''
   _FIREBASE_PROJECT_ID: ''
   _FIREBASE_AUTH_DOMAIN: ''

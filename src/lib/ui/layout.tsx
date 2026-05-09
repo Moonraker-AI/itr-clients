@@ -24,14 +24,6 @@ type LayoutProps = PropsWithChildren<{
 
 export const Layout: FC<LayoutProps> = ({ title, head, theme, scripts, children }) => {
   const isDark = theme === 'dark';
-  // Browser Sentry (v0.21.0): silently no-op when SENTRY_BROWSER_DSN
-  // is not bound, so dev / pre-activation Cloud Run revisions stay
-  // free of the script tag entirely.
-  const sentryBrowserDsn = process.env.SENTRY_BROWSER_DSN ?? '';
-  const sentryBrowserEnv =
-    process.env.SENTRY_BROWSER_ENV ??
-    (process.env.GCP_PROJECT_ID?.includes('prod') ? 'prod' : 'dev');
-  const sentryBrowserRelease = process.env.K_REVISION ?? '';
   return (
     <html lang="en" class={isDark ? 'dark' : undefined}>
       <head>
@@ -42,16 +34,10 @@ export const Layout: FC<LayoutProps> = ({ title, head, theme, scripts, children 
         {FAVICON_LINKS}
         <link rel="stylesheet" href="/static/app.css" />
         <script>{raw(PREPAINT_THEME)}</script>
-        {sentryBrowserDsn ? (
-          <>
-            <meta name="sentry-browser-dsn" content={sentryBrowserDsn} />
-            <meta name="sentry-browser-env" content={sentryBrowserEnv} />
-            {sentryBrowserRelease ? (
-              <meta name="sentry-browser-release" content={sentryBrowserRelease} />
-            ) : null}
-            <script src="/static/js/sentry-browser.js" defer></script>
-          </>
-        ) : null}
+        {/* v0.28.0: vanilla browser error reporter, posts to
+            /api/browser-error → Cloud Error Reporting via Cloud
+            Logging. No external SDK, no DSN, no BAA risk. */}
+        <script src="/static/js/browser-error.js" defer></script>
         {head}
       </head>
       <body class="min-h-screen bg-background text-foreground antialiased">

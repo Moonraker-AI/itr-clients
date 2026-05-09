@@ -4,6 +4,7 @@ import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 
 import { getDb } from './db/client.js';
+import { browserErrorRoute } from './routes/api/browser-error.js';
 import { stripeWebhookRoute } from './routes/api/webhooks-stripe.js';
 import { cronStateTransitionsRoute } from './routes/api/cron-state-transitions.js';
 import { cronRetryFailedChargesRoute } from './routes/api/cron-retry-failed-charges.js';
@@ -32,13 +33,17 @@ import { publicPaymentRoute } from './routes/public/payment.js';
 import { PREPAINT_THEME_SHA } from './lib/csp.js';
 import { log } from './lib/phi-redactor.js';
 import { clientIp, createRateLimiter } from './lib/rate-limit.js';
-import { captureError, flushSentry, initSentry } from './lib/sentry.js';
+import {
+  captureError,
+  flushErrorReporter,
+  initErrorReporter,
+} from './lib/error-reporter.js';
 import { parseTraceId, runWithTrace } from './lib/trace-context.js';
 
 // Init before any request handler runs so app.onError can captureException
 // without losing the early-boot errors. Idempotent + a no-op when SENTRY_DSN
 // is unset (local + CI default).
-initSentry();
+initErrorReporter();
 
 const app = new Hono();
 
@@ -81,7 +86,7 @@ app.use('*', async (c, next) => {
         "img-src 'self' data:",
         "style-src 'self' 'unsafe-inline'",
         `script-src 'self' ${PREPAINT_THEME_SHA} https://www.gstatic.com https://apis.google.com https://js.stripe.com`,
-        "connect-src 'self' https://*.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.gstatic.com https://apis.google.com https://api.stripe.com https://*.ingest.sentry.io https://*.sentry.io",
+        "connect-src 'self' https://*.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.gstatic.com https://apis.google.com https://api.stripe.com",
         "frame-src https://js.stripe.com https://*.stripe.com https://*.firebaseapp.com https://accounts.google.com",
         "frame-ancestors 'none'",
         "base-uri 'self'",
@@ -125,6 +130,7 @@ app.get('/', (c) =>
 const webhookOnly = process.env.WEBHOOK_ONLY === '1';
 
 app.route('/api/webhooks/stripe', stripeWebhookRoute);
+app.route('/api/browser-error', browserErrorRoute);
 
 if (!webhookOnly) {
   // Static assets (M10): Tailwind-compiled CSS + self-hosted fonts. Long
@@ -217,8 +223,9 @@ if (!webhookOnly) {
 app.notFound((c) => c.json({ error: 'not_found' }, 404));
 
 // Last-resort error handler. All log fields go through the PHI redactor;
-// Sentry capture is gated on SENTRY_DSN being set and runs the same
-// redactor on the structured context before transmission.
+// captureError emits a Cloud Error Reporting ReportedErrorEvent JSON
+// line on stdout; Cloud Logging picks it up and routes it to Error
+// Reporting. PHI redactor still runs over the context object.
 app.onError((err, c) => {
   log.error('unhandled_error', {
     error: err.message,
@@ -265,12 +272,13 @@ const shutdown = (signal: string) => {
   log.info('shutdown', { signal });
   server.close(async () => {
     try {
-      // Flush queued Sentry events first — once the DB pool closes any
-      // capture call inside post-pool teardown will be lost. 1.5s budget
-      // sits comfortably inside the 9s SIGTERM window above.
-      await flushSentry(1500);
+      // No-op today — error reports are unbuffered stdout writes that
+      // Cloud Logging tails directly. Kept for symmetry with the prior
+      // Sentry shutdown contract; if we ever swap to a buffered transport
+      // the SIGTERM handler doesn't need to change.
+      await flushErrorReporter(1500);
     } catch {
-      // No-op if Sentry transport hangs; never block shutdown on it.
+      // Never block shutdown on the reporter.
     }
     try {
       const { pool } = await getDb();

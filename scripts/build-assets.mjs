@@ -64,10 +64,11 @@ for (const entry of jsEntries) {
 }
 
 // JS Bundles -----------------------------------------------------------
-// Anything in src/assets/js-bundles/ is an entry that imports npm
-// packages (e.g. @sentry/browser) — bundled via esbuild into a single
-// minified file that lands at dist/static/js/<name>.js. CSP stays
-// 'self' because the output is same-origin.
+// Anything in src/assets/js-bundles/ is an entry that gets esbuild-
+// bundled into a single minified file at dist/static/js/<name>.js.
+// CSP stays 'self' because the output is same-origin. v0.28.0 entries
+// have no npm imports; esbuild still runs to keep output naming +
+// minification consistent and to leave room for future imports.
 const jsBundleSrc = resolve(root, 'src/assets/js-bundles');
 let bundleEntries = [];
 try {
