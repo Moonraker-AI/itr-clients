@@ -121,12 +121,13 @@ export const therapists = pgTable('therapists', {
   // Stored now so we can backfill from operational records without a
   // second migration. NULL = legacy direct-charge pipeline (e.g. Ross).
   stripeConnectAccountId: text('stripe_connect_account_id'),
-  // Therapist's share of charged retreat revenue. 0..100. Default 80%
-  // matches the spreadsheet baseline; Bambi is the only exception today
-  // at 100%. Used by the v0.25+ payout pipeline; ignored before then.
+  // Therapist's share of charged retreat NET revenue (post Stripe fee).
+  // 0..100. Default flipped 80 → 60 in migration 0011 (v0.27.0) to match
+  // the actual ITR rev-share agreement; Bambi keeps her 100% exception.
+  // Used by the v0.25+ payout pipeline; ignored before then.
   therapistPayoutPct: numeric('therapist_payout_pct', { precision: 5, scale: 2 })
     .notNull()
-    .default('80'),
+    .default('60'),
   active: boolean('active').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()

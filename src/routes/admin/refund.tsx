@@ -6,7 +6,13 @@ import { Hono } from 'hono';
 import { and, eq } from 'drizzle-orm';
 
 import { getDb } from '../../db/client.js';
-import { auditEvents, clients, payments, retreats } from '../../db/schema.js';
+import {
+  auditEvents,
+  clients,
+  payments,
+  retreats,
+  therapists,
+} from '../../db/schema.js';
 import { therapistCanAccess } from '../../lib/auth.js';
 import { ensureCsrfToken, verifyCsrfToken } from '../../lib/csrf.js';
 import { log } from '../../lib/phi-redactor.js';
@@ -175,8 +181,13 @@ adminRefundRoute.post('/:id/refund', async (c) => {
       retreatId: retreats.id,
       clientId: retreats.clientId,
       therapistId: retreats.therapistId,
+      // Phase C (v0.27.0). Refunds against destination-charge payments
+      // need reverse_transfer + refund_application_fee. NULL connect id
+      // ⇒ legacy direct charge ⇒ regular refund.
+      connectAccountId: therapists.stripeConnectAccountId,
     })
     .from(retreats)
+    .innerJoin(therapists, eq(retreats.therapistId, therapists.id))
     .where(eq(retreats.id, id));
   if (!retreat) return c.notFound();
   if (!therapistCanAccess(c.get('user'), retreat.therapistId)) return c.notFound();
@@ -233,6 +244,7 @@ adminRefundRoute.post('/:id/refund', async (c) => {
       idempotencyKey: `refund:${target.stripePaymentIntentId}:${refundAttempt}`,
       retreatId: id,
       clientId: retreat.clientId,
+      isDestinationCharge: Boolean(retreat.connectAccountId),
     });
   } catch (err) {
     log.error('admin_refund_stripe_error', {
