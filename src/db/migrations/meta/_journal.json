@@ -57,6 +57,13 @@
       "when": 1778258400000,
       "tag": "0007_email_log_bounces",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1778259000000,
+      "tag": "0008_kair_program",
+      "breakpoints": true
     }
   ]
 }

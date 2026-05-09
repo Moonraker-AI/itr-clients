@@ -79,6 +79,7 @@ function parseBulkResult(raw: string | undefined): BulkResult | null {
 interface DashRow {
   retreatId: string;
   state: string;
+  program: string;
   scheduledStartDate: string | null;
   scheduledEndDate: string | null;
   totalPlannedCents: number;
@@ -148,6 +149,7 @@ adminDashboardRoute.get('/', async (c) => {
     .select({
       retreatId: retreats.id,
       state: retreats.state,
+      program: retreats.program,
       scheduledStartDate: retreats.scheduledStartDate,
       scheduledEndDate: retreats.scheduledEndDate,
       totalPlannedCents: retreats.totalPlannedCents,
@@ -349,7 +351,16 @@ adminDashboardRoute.get('/', async (c) => {
                         {r.clientFirstName} {r.clientLastName}
                       </Td>
                       <Td class="text-muted-foreground">{r.therapistFullName}</Td>
-                      <Td>{stateBadge(r.state)}</Td>
+                      <Td>
+                        <div class="flex flex-wrap items-center gap-1.5">
+                          {stateBadge(r.state)}
+                          {r.program === 'kair' ? (
+                            <Badge variant="outline" class="border-primary text-primary">
+                              KAIR
+                            </Badge>
+                          ) : null}
+                        </div>
+                      </Td>
                       <Td class="text-sm">{dates}</Td>
                       <Td>
                         <span class="font-medium">{totalLabel}</span>{' '}

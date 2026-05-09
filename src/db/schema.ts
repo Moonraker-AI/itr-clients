@@ -67,6 +67,8 @@ export const emailStatus = pgEnum('email_status', [
   'failed',
 ]);
 
+export const retreatProgram = pgEnum('retreat_program', ['itr', 'kair']);
+
 export const paymentKind = pgEnum('payment_kind', ['deposit', 'final', 'refund']);
 
 export const paymentStatus = pgEnum('payment_status', [
@@ -98,6 +100,23 @@ export const therapists = pgTable('therapists', {
   primaryLocationId: uuid('primary_location_id').references(() => locations.id),
   defaultFullDayCents: integer('default_full_day_cents').notNull(),
   defaultHalfDayCents: integer('default_half_day_cents'),
+  // KAIR program (v0.23.0). Only KAIR-eligible therapists may be assigned to
+  // a retreat with program='kair'. The kair_*_day_cents are required when
+  // kair_eligible=true (server-side validation; not enforced at the DB
+  // because legacy rows pre-migration have neither column populated).
+  kairEligible: boolean('kair_eligible').notNull().default(false),
+  kairFullDayCents: integer('kair_full_day_cents'),
+  kairHalfDayCents: integer('kair_half_day_cents'),
+  // Stripe Connect account for therapist-direct payouts (Phase C, v0.25+).
+  // Stored now so we can backfill from operational records without a
+  // second migration. NULL = legacy direct-charge pipeline (e.g. Ross).
+  stripeConnectAccountId: text('stripe_connect_account_id'),
+  // Therapist's share of charged retreat revenue. 0..100. Default 80%
+  // matches the spreadsheet baseline; Bambi is the only exception today
+  // at 100%. Used by the v0.25+ payout pipeline; ignored before then.
+  therapistPayoutPct: numeric('therapist_payout_pct', { precision: 5, scale: 2 })
+    .notNull()
+    .default('80'),
   active: boolean('active').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
@@ -183,6 +202,10 @@ export const retreats = pgTable(
       .references(() => therapists.id),
     locationId: uuid('location_id').references(() => locations.id),
     state: retreatState('state').notNull().default('draft'),
+    // Retreat program (v0.23.0). 'itr' = standard intensive trauma retreat,
+    // 'kair' = ketamine-assisted intensive retreat. Only therapists with
+    // therapists.kair_eligible=true may be assigned to a kair retreat.
+    program: retreatProgram('program').notNull().default('itr'),
 
     plannedFullDays: integer('planned_full_days').notNull().default(0),
     plannedHalfDays: integer('planned_half_days').notNull().default(0),

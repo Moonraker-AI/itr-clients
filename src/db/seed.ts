@@ -45,6 +45,19 @@ type TherapistSeed = {
   locationSlug: string;
   fullDayCents: number;
   halfDayCents: number | null;
+  // KAIR (v0.23.0). When kairEligible is true, both kairFullDayCents and
+  // kairHalfDayCents must be non-null. Untrained therapists leave all three
+  // unset; the migration backfill enforces the same on the prod DB.
+  kairEligible?: boolean;
+  kairFullDayCents?: number;
+  kairHalfDayCents?: number;
+  // Stripe Connect for the future payout pipeline (Phase C, v0.25+).
+  // NULL on Ross (paid directly) and Chris (platform owner).
+  stripeConnectAccountId?: string;
+  // 0..100 numeric string. Default 80 (matches the spreadsheet baseline);
+  // Bambi is the only exception today at 100. Stored as string so the
+  // numeric column round-trips exactly.
+  therapistPayoutPct?: string;
 };
 
 const THERAPISTS: TherapistSeed[] = [
@@ -65,6 +78,10 @@ const THERAPISTS: TherapistSeed[] = [
     locationSlug: 'northampton-ma',
     fullDayCents: 155_000,
     halfDayCents: 83_000,
+    kairEligible: true,
+    kairFullDayCents: 185_000,
+    kairHalfDayCents: 100_000,
+    stripeConnectAccountId: 'acct_1M9ZMUD89kXLgstF',
   },
   {
     slug: 'bambi-rattner',
@@ -74,6 +91,11 @@ const THERAPISTS: TherapistSeed[] = [
     locationSlug: 'northampton-ma',
     fullDayCents: 155_000,
     halfDayCents: 83_000,
+    kairEligible: true,
+    kairFullDayCents: 185_000,
+    kairHalfDayCents: 100_000,
+    stripeConnectAccountId: 'acct_1JxjLSDGT6bz5bfX',
+    therapistPayoutPct: '100',
   },
   {
     slug: 'jordan-hamilton',
@@ -83,6 +105,7 @@ const THERAPISTS: TherapistSeed[] = [
     locationSlug: 'auburn-ca',
     fullDayCents: 200_000,
     halfDayCents: null,
+    stripeConnectAccountId: 'acct_1MC6ZrD3Yl7yuaca',
   },
   {
     slug: 'nikki-gamache',
@@ -92,6 +115,10 @@ const THERAPISTS: TherapistSeed[] = [
     locationSlug: 'northampton-ma',
     fullDayCents: 155_000,
     halfDayCents: 83_000,
+    kairEligible: true,
+    kairFullDayCents: 185_000,
+    kairHalfDayCents: 100_000,
+    stripeConnectAccountId: 'acct_1M9X2mDFNkk4EY1n',
   },
   {
     slug: 'ross-hackerson',
@@ -101,6 +128,9 @@ const THERAPISTS: TherapistSeed[] = [
     locationSlug: 'northampton-ma',
     fullDayCents: 240_000,
     halfDayCents: null,
+    // No stripeConnectAccountId — Ross is paid directly outside the
+    // Connect pipeline. Charges fall back to the legacy direct-charge
+    // flow on his retreats. Same applies to Chris (platform owner).
   },
   {
     slug: 'vickie-alston',
@@ -110,6 +140,10 @@ const THERAPISTS: TherapistSeed[] = [
     locationSlug: 'east-granby-ct',
     fullDayCents: 155_000,
     halfDayCents: 83_000,
+    kairEligible: true,
+    kairFullDayCents: 185_000,
+    kairHalfDayCents: 100_000,
+    stripeConnectAccountId: 'acct_1MC55tD6y6uH6AtZ',
   },
 ];
 
@@ -133,17 +167,23 @@ async function main() {
     for (const t of THERAPISTS) {
       const locId = locationIdBySlug.get(t.locationSlug);
       if (!locId) throw new Error(`unknown location slug: ${t.locationSlug}`);
+      const therapistRow = {
+        slug: t.slug,
+        fullName: t.fullName,
+        email: t.email,
+        role: t.role,
+        primaryLocationId: locId,
+        defaultFullDayCents: t.fullDayCents,
+        defaultHalfDayCents: t.halfDayCents,
+        kairEligible: t.kairEligible ?? false,
+        kairFullDayCents: t.kairFullDayCents ?? null,
+        kairHalfDayCents: t.kairHalfDayCents ?? null,
+        stripeConnectAccountId: t.stripeConnectAccountId ?? null,
+        therapistPayoutPct: t.therapistPayoutPct ?? '80',
+      };
       await db
         .insert(therapists)
-        .values({
-          slug: t.slug,
-          fullName: t.fullName,
-          email: t.email,
-          role: t.role,
-          primaryLocationId: locId,
-          defaultFullDayCents: t.fullDayCents,
-          defaultHalfDayCents: t.halfDayCents,
-        })
+        .values(therapistRow)
         .onConflictDoUpdate({
           target: therapists.slug,
           set: {
@@ -153,6 +193,11 @@ async function main() {
             primaryLocationId: locId,
             defaultFullDayCents: t.fullDayCents,
             defaultHalfDayCents: t.halfDayCents,
+            kairEligible: therapistRow.kairEligible,
+            kairFullDayCents: therapistRow.kairFullDayCents,
+            kairHalfDayCents: therapistRow.kairHalfDayCents,
+            stripeConnectAccountId: therapistRow.stripeConnectAccountId,
+            therapistPayoutPct: therapistRow.therapistPayoutPct,
             active: true,
           },
         });

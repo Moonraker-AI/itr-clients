@@ -48,4 +48,23 @@
     var href = row.getAttribute('data-href');
     if (href) window.open(href, '_blank');
   });
+
+  // /admin/clients/new — KAIR retreat-type toggle (v0.23.0). When the
+  // therapist <select> changes, show or hide the retreat-type block based
+  // on data-kair-eligible on the selected option. When hidden, reset
+  // program=itr so a stale 'kair' value isn't submitted from a previous
+  // selection.
+  var therapistSelect = document.getElementById('therapist_id');
+  var retreatTypeBlock = document.getElementById('retreat-type-block');
+  var programSelect = document.getElementById('program');
+  if (therapistSelect && retreatTypeBlock) {
+    var sync = function () {
+      var opt = therapistSelect.options[therapistSelect.selectedIndex];
+      var eligible = opt && opt.getAttribute('data-kair-eligible') === '1';
+      retreatTypeBlock.hidden = !eligible;
+      if (!eligible && programSelect) programSelect.value = 'itr';
+    };
+    therapistSelect.addEventListener('change', sync);
+    sync();
+  }
 })();
