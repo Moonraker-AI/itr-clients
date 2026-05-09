@@ -218,6 +218,62 @@ export const transitions = {
   },
 
   /**
+   * Re-send the consent_package_sent email without changing state. Used by
+   * the bulk admin action when a client misses the original (filed in
+   * spam, deleted, mailbox full at original send time, etc.). State must
+   * already be `awaiting_consents` — there is no point resending after the
+   * client has signed and moved on.
+   *
+   * Emits a separate `consent_package_resent` audit event so the audit
+   * trail distinguishes a retry from the original send.
+   */
+  async resendConsentPackage(args: {
+    retreatId: RetreatId;
+    actor: Actor;
+  }): Promise<void> {
+    const { db } = await getDb();
+    const [r] = await db
+      .select({
+        state: retreats.state,
+        clientToken: retreats.clientToken,
+        clientId: retreats.clientId,
+      })
+      .from(retreats)
+      .where(eq(retreats.id, args.retreatId));
+    if (!r) throw new Error(`retreat not found: ${args.retreatId}`);
+    if (r.state !== 'awaiting_consents') {
+      throw new Error(
+        `cannot resend consent: state is ${r.state}, expected awaiting_consents`,
+      );
+    }
+
+    const [client] = await db
+      .select({ email: clients.email, firstName: clients.firstName })
+      .from(clients)
+      .where(eq(clients.id, r.clientId));
+    if (!client) throw new Error(`client row missing for retreat ${args.retreatId}`);
+
+    const { actorType, actorId } = actorToColumns(args.actor);
+    await db.insert(auditEvents).values({
+      retreatId: args.retreatId,
+      actorType,
+      actorId,
+      eventType: 'consent_package_resent',
+      payload: {},
+    });
+
+    await notify({
+      event: 'consent_package_sent',
+      retreatId: args.retreatId,
+      clientEmail: client.email,
+      clientFirstName: client.firstName,
+      clientPortalUrl: `${publicBaseUrl()}/c/${r.clientToken}/consents`,
+    });
+
+    log.info('consent_package_resent', { retreatId: args.retreatId });
+  },
+
+  /**
    * awaiting_consents → awaiting_deposit.
    *
    * Called by the public sign route once the last required signature lands.

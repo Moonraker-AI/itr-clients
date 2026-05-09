@@ -16,13 +16,18 @@ import { and, asc, desc, eq, sql } from 'drizzle-orm';
 
 import { getDb } from '../../db/client.js';
 import { clients, retreats, therapists } from '../../db/schema.js';
+import { ensureCsrfToken } from '../../lib/csrf.js';
 import { formatCents } from '../../lib/pricing.js';
 import { RETREAT_STATES, type RetreatState } from '../../lib/state-machine.js';
 import {
   AdminShell,
+  Alert,
+  AlertDescription,
+  AlertTitle,
   Badge,
   Card,
   CardContent,
+  CsrfInput,
   Layout,
   LinkButton,
   PageHeader,
@@ -41,6 +46,34 @@ export const adminDashboardRoute = new Hono();
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+interface BulkResult {
+  action: 'cancel' | 'resend-consent';
+  ok: number;
+  skipped: number;
+  failed: number;
+  errors: { retreatId: string; error: string }[];
+}
+
+function parseBulkResult(raw: string | undefined): BulkResult | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(decodeURIComponent(raw)) as Partial<BulkResult>;
+    if (parsed && typeof parsed.action === 'string' && typeof parsed.ok === 'number') {
+      return {
+        action: parsed.action,
+        ok: parsed.ok,
+        skipped: parsed.skipped ?? 0,
+        failed: parsed.failed ?? 0,
+        errors: parsed.errors ?? [],
+      };
+    }
+  } catch {
+    // Malformed → render no banner. The query string is user-supplied
+    // (after a redirect) so we tolerate junk silently.
+  }
+  return null;
+}
 
 interface DashRow {
   retreatId: string;
@@ -122,6 +155,10 @@ adminDashboardRoute.get('/', async (c) => {
     .where(where);
   const total = Number(countRows[0]?.count ?? 0);
 
+  const csrfToken = ensureCsrfToken(c);
+  const bulkResult = parseBulkResult(c.req.query('bulk_result'));
+  const bulkError = c.req.query('bulk_error') ?? '';
+
   const prevOffset = Math.max(0, offset - limit);
   const nextOffset = offset + limit;
   const hasPrev = offset > 0;
@@ -197,55 +234,106 @@ adminDashboardRoute.get('/', async (c) => {
           </CardContent>
         </Card>
 
-        <Card>
-          <Table>
-            <Thead>
-              <Tr>
-                <Th>Id</Th>
-                <Th>Client</Th>
-                <Th>Therapist</Th>
-                <Th>State</Th>
-                <Th>Scheduled</Th>
-                <Th>Total</Th>
-                <Th>Created</Th>
-              </Tr>
-            </Thead>
-            <Tbody>
-              {(rows as DashRow[]).map((r) => {
-                const dates =
-                  r.scheduledStartDate && r.scheduledEndDate
-                    ? `${r.scheduledStartDate} → ${r.scheduledEndDate}`
-                    : '-';
-                const totalLabel = r.totalActualCents
-                  ? `${formatCents(r.totalActualCents)}`
-                  : `${formatCents(r.totalPlannedCents)}`;
-                const totalSuffix = r.totalActualCents ? 'actual' : 'planned';
-                return (
-                  <Tr href={`/admin/clients/${r.retreatId}`}>
-                    <Td>
-                      <span class="font-mono text-xs text-primary">
-                        {r.retreatId.slice(0, 8)}
-                      </span>
-                    </Td>
-                    <Td>
-                      {r.clientFirstName} {r.clientLastName}
-                    </Td>
-                    <Td class="text-muted-foreground">{r.therapistFullName}</Td>
-                    <Td>{stateBadge(r.state)}</Td>
-                    <Td class="text-sm">{dates}</Td>
-                    <Td>
-                      <span class="font-medium">{totalLabel}</span>{' '}
-                      <span class="text-xs text-muted-foreground">({totalSuffix})</span>
-                    </Td>
-                    <Td class="text-xs text-muted-foreground">
-                      {r.createdAt.toISOString().slice(0, 10)}
-                    </Td>
-                  </Tr>
-                );
-              })}
-            </Tbody>
-          </Table>
-        </Card>
+        {bulkResult ? (
+          <Alert variant={bulkResult.failed > 0 ? 'destructive' : 'default'} class="mb-4">
+            <AlertTitle>
+              Bulk {bulkResult.action}: {bulkResult.ok} ok · {bulkResult.skipped} skipped ·{' '}
+              {bulkResult.failed} failed
+            </AlertTitle>
+            {bulkResult.errors.length > 0 ? (
+              <AlertDescription>
+                <ul class="mt-1 list-disc pl-5 text-xs">
+                  {bulkResult.errors.slice(0, 5).map((e) => (
+                    <li>
+                      <code class="font-mono">{e.retreatId.slice(0, 8)}</code>: {e.error}
+                    </li>
+                  ))}
+                  {bulkResult.errors.length > 5 ? (
+                    <li>+ {bulkResult.errors.length - 5} more</li>
+                  ) : null}
+                </ul>
+              </AlertDescription>
+            ) : null}
+          </Alert>
+        ) : null}
+        {bulkError ? (
+          <Alert variant="destructive" class="mb-4">
+            <AlertDescription>Bulk action error: {bulkError}</AlertDescription>
+          </Alert>
+        ) : null}
+
+        <form method="post" action="/admin/bulk">
+          <CsrfInput token={csrfToken} />
+          <div class="mb-3 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+            <span>With selected:</span>
+            <Button type="submit" name="action" value="resend-consent" variant="outline" size="sm">
+              Resend consent emails
+            </Button>
+            <Button type="submit" name="action" value="cancel" variant="destructive" size="sm">
+              Cancel
+            </Button>
+            <span class="text-xs">(max 25 per request)</span>
+          </div>
+          <Card>
+            <Table>
+              <Thead>
+                <Tr>
+                  <Th class="w-10"></Th>
+                  <Th>Id</Th>
+                  <Th>Client</Th>
+                  <Th>Therapist</Th>
+                  <Th>State</Th>
+                  <Th>Scheduled</Th>
+                  <Th>Total</Th>
+                  <Th>Created</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {(rows as DashRow[]).map((r) => {
+                  const dates =
+                    r.scheduledStartDate && r.scheduledEndDate
+                      ? `${r.scheduledStartDate} → ${r.scheduledEndDate}`
+                      : '-';
+                  const totalLabel = r.totalActualCents
+                    ? `${formatCents(r.totalActualCents)}`
+                    : `${formatCents(r.totalPlannedCents)}`;
+                  const totalSuffix = r.totalActualCents ? 'actual' : 'planned';
+                  return (
+                    <Tr href={`/admin/clients/${r.retreatId}`}>
+                      <Td class="w-10">
+                        <input
+                          type="checkbox"
+                          name="ids"
+                          value={r.retreatId}
+                          aria-label={`Select ${r.retreatId.slice(0, 8)}`}
+                          class="h-4 w-4 rounded border-input"
+                        />
+                      </Td>
+                      <Td>
+                        <span class="font-mono text-xs text-primary">
+                          {r.retreatId.slice(0, 8)}
+                        </span>
+                      </Td>
+                      <Td>
+                        {r.clientFirstName} {r.clientLastName}
+                      </Td>
+                      <Td class="text-muted-foreground">{r.therapistFullName}</Td>
+                      <Td>{stateBadge(r.state)}</Td>
+                      <Td class="text-sm">{dates}</Td>
+                      <Td>
+                        <span class="font-medium">{totalLabel}</span>{' '}
+                        <span class="text-xs text-muted-foreground">({totalSuffix})</span>
+                      </Td>
+                      <Td class="text-xs text-muted-foreground">
+                        {r.createdAt.toISOString().slice(0, 10)}
+                      </Td>
+                    </Tr>
+                  );
+                })}
+              </Tbody>
+            </Table>
+          </Card>
+        </form>
 
         <div class="mt-6 flex items-center gap-2">
           {hasPrev ? (

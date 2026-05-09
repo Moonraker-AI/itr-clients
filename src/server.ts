@@ -16,6 +16,7 @@ import { adminCompleteRoute } from './routes/admin/complete.js';
 import { adminConfirmDatesRoute } from './routes/admin/confirm-dates.js';
 import { adminConsentPdfRoute } from './routes/admin/consent-pdf.js';
 import { adminAuditRoute } from './routes/admin/audit.js';
+import { adminBulkRoute } from './routes/admin/bulk.js';
 import { adminDashboardRoute } from './routes/admin/dashboard.js';
 import { adminExportRoute } from './routes/admin/export.js';
 import { adminPricingRoute } from './routes/admin/pricing.js';
@@ -160,6 +161,7 @@ if (!webhookOnly) {
 
   app.route('/admin/pricing', adminPricingRoute);
   app.route('/admin/audit', adminAuditRoute);
+  app.route('/admin/bulk', adminBulkRoute);
   app.route('/admin/clients/new', adminClientsNewRoute);
   // Confirm-dates + complete + refund routes (`/admin/clients/:id/<action>`)
   // must mount BEFORE the catch-all detail route or the `/:id` matcher
