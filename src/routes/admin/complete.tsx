@@ -6,7 +6,13 @@ import { Hono } from 'hono';
 import { and, eq, sum } from 'drizzle-orm';
 
 import { getDb } from '../../db/client.js';
-import { clients, payments, retreats, stripeCustomers } from '../../db/schema.js';
+import {
+  clients,
+  payments,
+  retreats,
+  stripeCustomers,
+  therapists,
+} from '../../db/schema.js';
 import { therapistCanAccess } from '../../lib/auth.js';
 import { ensureCsrfToken, verifyCsrfToken } from '../../lib/csrf.js';
 import { log } from '../../lib/phi-redactor.js';
@@ -204,6 +210,7 @@ adminCompleteRoute.post('/:id/complete', async (c) => {
     .select({
       retreatId: retreats.id,
       clientId: retreats.clientId,
+      therapistId: retreats.therapistId,
       totalActualCents: retreats.totalActualCents,
     })
     .from(retreats)
@@ -259,6 +266,15 @@ adminCompleteRoute.post('/:id/complete', async (c) => {
     return c.redirect(`/admin/clients/${id}`);
   }
 
+  // Phase C (v0.25.0). Load therapist Connect routing for destination charge.
+  const [t] = await db
+    .select({
+      connectAccountId: therapists.stripeConnectAccountId,
+      payoutPct: therapists.therapistPayoutPct,
+    })
+    .from(therapists)
+    .where(eq(therapists.id, r.therapistId));
+
   const charge = await chargeFinalBalance({
     retreatId: id,
     clientId: r.clientId,
@@ -266,6 +282,8 @@ adminCompleteRoute.post('/:id/complete', async (c) => {
     paymentMethodId: sc.defaultPaymentMethodId,
     amountCents: balance,
     idempotencyKey: `final:${id}:1`,
+    connectAccountId: t?.connectAccountId ?? null,
+    payoutPct: t?.payoutPct ?? null,
   });
 
   if (charge.status === 'succeeded') {
