@@ -297,21 +297,6 @@ adminDashboardRoute.get('/', async (c) => {
 
         <form method="post" action="/admin/bulk" class="group/bulk">
           <CsrfInput token={csrfToken} />
-          {/* Bulk action toolbar — hidden until at least one row is
-              selected. Reduces visual prominence of two destructive-
-              adjacent buttons that admins rarely need (typical day:
-              zero bulk operations). Uses Tailwind v4's named group +
-              :has() variant; works in every modern browser. */}
-          <div class="hidden group-has-[input:checked]/bulk:flex mb-3 flex-wrap items-center gap-2 text-sm text-muted-foreground">
-            <span>With selected:</span>
-            <Button type="submit" name="action" value="resend-consent" variant="outline" size="sm">
-              Resend consent emails
-            </Button>
-            <Button type="submit" name="action" value="cancel" variant="destructive" size="sm">
-              Cancel
-            </Button>
-            <span class="text-xs">(max 25 per request)</span>
-          </div>
           <Card>
             <Table>
               <Thead>
@@ -380,6 +365,21 @@ adminDashboardRoute.get('/', async (c) => {
               </Tbody>
             </Table>
           </Card>
+          {/* Bulk action toolbar — hidden until at least one row is
+              selected. Lives BELOW the table so the table's vertical
+              position doesn't shift when a checkbox is ticked. Uses
+              Tailwind v4's named group + :has() variant; works in
+              every modern browser. */}
+          <div class="hidden group-has-[input:checked]/bulk:flex mt-3 flex-wrap items-center gap-2 text-sm text-muted-foreground">
+            <span>With selected:</span>
+            <Button type="submit" name="action" value="resend-consent" variant="outline" size="sm">
+              Resend consent emails
+            </Button>
+            <Button type="submit" name="action" value="cancel" variant="destructive" size="sm">
+              Cancel
+            </Button>
+            <span class="text-xs">(max 25 per request)</span>
+          </div>
         </form>
 
         <div class="mt-6 flex items-center gap-2">
