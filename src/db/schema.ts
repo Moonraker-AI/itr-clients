@@ -337,11 +337,15 @@ export const auditEvents = pgTable('audit_events', {
  * notifications to team@itr) are non-PHI and may be exported as-is.
  *
  * Status semantics:
- *   sent       — gmail.send() returned a messageId; gmail_message_id is set
+ *   sent       — gmail.send() returned a messageId; message_id is set
  *   delivered  — webhook/poll confirmed delivery (not currently emitted)
- *   bounced    — recipient address rejected (not currently emitted)
+ *   bounced    — DSN matched against message_id; bounced_at + bounce_reason set
  *   complained — spam-flagged (not currently emitted)
- *   failed     — send raised; gmail_message_id is null (audit #28)
+ *   failed     — send raised; message_id is null (audit #28)
+ *
+ * message_id is the RFC 5322 Message-ID header we generate at send time and
+ * pass to Gmail in the raw payload. The cron-scan-bounces job parses inbound
+ * DSN messages and matches their In-Reply-To header against this column.
  */
 export const emailLog = pgTable('email_log', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -350,9 +354,11 @@ export const emailLog = pgTable('email_log', {
   }),
   recipient: text('recipient').notNull(),
   templateName: text('template_name').notNull(),
-  gmailMessageId: text('gmail_message_id'),
+  messageId: text('message_id'),
   status: emailStatus('status').notNull().default('sent'),
   sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
+  bouncedAt: timestamp('bounced_at', { withTimezone: true }),
+  bounceReason: text('bounce_reason'),
 });
 
 /**

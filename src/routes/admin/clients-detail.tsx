@@ -142,9 +142,11 @@ adminClientsDetailRoute.get('/:id', async (c) => {
     .select({
       recipient: emailLog.recipient,
       templateName: emailLog.templateName,
-      gmailMessageId: emailLog.gmailMessageId,
+      messageId: emailLog.messageId,
       status: emailLog.status,
       sentAt: emailLog.sentAt,
+      bouncedAt: emailLog.bouncedAt,
+      bounceReason: emailLog.bounceReason,
     })
     .from(emailLog)
     .where(eq(emailLog.retreatId, id))
@@ -435,7 +437,7 @@ adminClientsDetailRoute.get('/:id', async (c) => {
                     <Th>Template</Th>
                     <Th>Recipient</Th>
                     <Th>Status</Th>
-                    <Th>Gmail msg id</Th>
+                    <Th>Message id</Th>
                   </Tr>
                 </Thead>
                 <Tbody>
@@ -447,14 +449,21 @@ adminClientsDetailRoute.get('/:id', async (c) => {
                       <Td class="text-sm">{e.templateName}</Td>
                       <Td class="text-sm">{e.recipient}</Td>
                       <Td>
-                        {e.status === 'failed' ? (
-                          <Badge variant="destructive">{e.status}</Badge>
+                        {e.status === 'failed' || e.status === 'bounced' ? (
+                          <div class="flex flex-col gap-1">
+                            <Badge variant="destructive">{e.status}</Badge>
+                            {e.bounceReason ? (
+                              <span class="text-xs text-muted-foreground">
+                                {e.bounceReason}
+                              </span>
+                            ) : null}
+                          </div>
                         ) : (
                           <Badge variant="secondary">{e.status}</Badge>
                         )}
                       </Td>
                       <Td>
-                        <code class="font-mono text-xs">{e.gmailMessageId ?? ''}</code>
+                        <code class="font-mono text-xs">{e.messageId ?? ''}</code>
                       </Td>
                     </Tr>
                   ))}
