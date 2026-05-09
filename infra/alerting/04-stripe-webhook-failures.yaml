@@ -1,0 +1,30 @@
+# Stripe webhook handler failures — log-based metric stripe_webhook_failed.
+# Stripe will retry, so a single failure is not a page; sustained failures
+# in a 10-min window mean a real bug and Stripe is about to back off.
+displayName: Stripe webhook failures (itr-stripe-webhook)
+combiner: OR
+notificationChannels:
+  - ${CHANNEL}
+conditions:
+  - displayName: any webhook handler failure in 10 min
+    conditionThreshold:
+      filter: |
+        resource.type = "cloud_run_revision"
+        AND metric.type = "logging.googleapis.com/user/stripe_webhook_failed"
+      aggregations:
+        - alignmentPeriod: 60s
+          perSeriesAligner: ALIGN_DELTA
+          crossSeriesReducer: REDUCE_SUM
+      comparison: COMPARISON_GT
+      thresholdValue: 0
+      duration: 600s
+      trigger:
+        count: 1
+documentation:
+  content: |
+    Stripe webhook handler raised at least once in the last 10 min.
+    Check the structured log line for the trace and stripe event id;
+    cross-reference the event in the Stripe dashboard. The webhook is
+    on a separate Cloud Run service (itr-stripe-webhook) by design —
+    look there, not the main app, for the relevant logs.
+  mimeType: text/markdown

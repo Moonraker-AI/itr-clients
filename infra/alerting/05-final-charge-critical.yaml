@@ -1,0 +1,37 @@
+# Final-charge CRITICAL — Stripe charged but our DB write failed.
+# This is the worst-case for billing reconciliation: the customer's card
+# is charged but our state machine doesn't know it, so the retreat sits
+# in awaiting_final_charge while Stripe shows a successful PaymentIntent.
+# Manual reconciliation required for any incident.
+displayName: Final-charge DB write failed AFTER Stripe charge succeeded
+combiner: OR
+notificationChannels:
+  - ${CHANNEL}
+conditions:
+  - displayName: any CRITICAL_final_charge_succeeded_but_db_write_failed in 10 min
+    conditionThreshold:
+      filter: |
+        resource.type = "cloud_run_revision"
+        AND metric.type = "logging.googleapis.com/user/final_charge_db_write_failed_after_succeeded"
+      aggregations:
+        - alignmentPeriod: 60s
+          perSeriesAligner: ALIGN_DELTA
+          crossSeriesReducer: REDUCE_SUM
+      comparison: COMPARISON_GT
+      thresholdValue: 0
+      duration: 600s
+      trigger:
+        count: 1
+severity: CRITICAL
+documentation:
+  content: |
+    Stripe successfully charged the customer's card, but our DB write to
+    payments + retreats failed. The customer's money has moved; our state
+    has not. Reconcile manually:
+      1. Find the payment_intent_id in the log payload.
+      2. Look it up in Stripe dashboard → confirm charge succeeded.
+      3. Look up the retreat by id; verify state is still
+         `awaiting_final_charge` (it will be).
+      4. Apply the matching state transition + payments row INSERT by
+         hand using the inspect-retreat-sql script as reference.
+  mimeType: text/markdown

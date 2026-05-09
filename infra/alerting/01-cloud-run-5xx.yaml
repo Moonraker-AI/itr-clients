@@ -1,0 +1,32 @@
+# Cloud Run 5xx error rate > 5% over 5 min on itr-client-hq.
+#
+# Apply via scripts/apply-monitoring.sh — it substitutes ${CHANNEL} with the
+# notification channel id resolved from gcloud at apply time.
+displayName: Cloud Run 5xx rate (itr-client-hq)
+combiner: OR
+notificationChannels:
+  - ${CHANNEL}
+conditions:
+  - displayName: 5xx rate > 5%
+    conditionThreshold:
+      filter: |
+        resource.type = "cloud_run_revision"
+        AND resource.labels.service_name = "itr-client-hq"
+        AND metric.type = "run.googleapis.com/request_count"
+        AND metric.labels.response_code_class = "5xx"
+      aggregations:
+        - alignmentPeriod: 60s
+          perSeriesAligner: ALIGN_RATE
+          crossSeriesReducer: REDUCE_SUM
+      comparison: COMPARISON_GT
+      thresholdValue: 0.05
+      duration: 300s
+      trigger:
+        count: 1
+documentation:
+  content: |
+    Cloud Run 5xx ratio breached 5% sustained over 5 min on itr-client-hq.
+    Check the Cloud Run logs for the offending revision and roll back via
+    `gcloud run services update-traffic itr-client-hq --to-revisions=<prev>=100`
+    if the spike is post-deploy.
+  mimeType: text/markdown

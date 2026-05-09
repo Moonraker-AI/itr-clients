@@ -1,0 +1,31 @@
+# Cloud Run p95 request latency > 2s for 5 min on itr-client-hq.
+#
+# Most routes are SQL + JSX render; p95 over 2s indicates DB pressure,
+# cold-start storms, or an upstream call (Stripe / Gmail) hanging.
+displayName: Cloud Run p95 latency (itr-client-hq)
+combiner: OR
+notificationChannels:
+  - ${CHANNEL}
+conditions:
+  - displayName: p95 latency > 2s
+    conditionThreshold:
+      filter: |
+        resource.type = "cloud_run_revision"
+        AND resource.labels.service_name = "itr-client-hq"
+        AND metric.type = "run.googleapis.com/request_latencies"
+      aggregations:
+        - alignmentPeriod: 60s
+          perSeriesAligner: ALIGN_PERCENTILE_95
+          crossSeriesReducer: REDUCE_MEAN
+      comparison: COMPARISON_GT
+      thresholdValue: 2000
+      duration: 300s
+      trigger:
+        count: 1
+documentation:
+  content: |
+    p95 request latency on itr-client-hq exceeded 2 seconds for 5 minutes.
+    First check Cloud SQL CPU + connection pool — a saturated DB is the
+    most common cause. Then check Cloud Run instance count for cold-start
+    pressure during a traffic spike.
+  mimeType: text/markdown

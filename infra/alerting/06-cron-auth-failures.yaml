@@ -1,0 +1,30 @@
+# Cron shared-secret auth failures.
+# Routine: spike means the secret rotated and a Cloud Scheduler job is stale,
+# OR someone is probing the cron endpoints from outside (the Cloud Run IAM
+# gate should already block those — but belt + suspenders).
+displayName: Cron auth failures (itr-client-hq)
+combiner: OR
+notificationChannels:
+  - ${CHANNEL}
+conditions:
+  - displayName: cron auth failures > 5 in 10 min
+    conditionThreshold:
+      filter: |
+        resource.type = "cloud_run_revision"
+        AND metric.type = "logging.googleapis.com/user/cron_auth_failed"
+      aggregations:
+        - alignmentPeriod: 60s
+          perSeriesAligner: ALIGN_DELTA
+          crossSeriesReducer: REDUCE_SUM
+      comparison: COMPARISON_GT
+      thresholdValue: 5
+      duration: 600s
+      trigger:
+        count: 1
+documentation:
+  content: |
+    More than 5 cron-secret mismatches in 10 minutes. Likely cause: the
+    CRON_SHARED_SECRET secret rotated but one of the Cloud Scheduler jobs
+    still posts the old value. Re-run the matching m*-create-scheduler.sh
+    script with the new secret in env to update its --update-headers.
+  mimeType: text/markdown

@@ -42,7 +42,20 @@ cronScanBouncesRoute.post('/scan-bounces', async (c) => {
   }
 
   const since = new Date(Date.now() - SCAN_WINDOW_MS);
-  const bounces = await listBounces({ since });
+  let bounces;
+  try {
+    bounces = await listBounces({ since });
+  } catch (err) {
+    // Single grep-able log line for the cron_scan_bounces_failed monitoring
+    // metric. Most likely cause is a missing gmail.readonly DWD scope or a
+    // Gmail API quota event — both block bounce visibility for ops, so the
+    // alert wakes someone up after sustained failures.
+    log.error('cron_scan_bounces_failed', {
+      since: since.toISOString(),
+      error: (err as Error).message,
+    });
+    return c.json({ error: 'list_bounces_failed' }, 502);
+  }
 
   const { db } = await getDb();
   let matched = 0;

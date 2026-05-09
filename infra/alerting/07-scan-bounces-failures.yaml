@@ -1,0 +1,31 @@
+# /api/cron/scan-bounces handler errors. The cron is best-effort and a
+# single failure is not actionable, but sustained failures mean either the
+# Workspace DWD scope grant has been revoked OR Gmail API quota is
+# exhausted — both block bounce visibility for ops.
+displayName: Bounce-scan cron failures (itr-client-hq)
+combiner: OR
+notificationChannels:
+  - ${CHANNEL}
+conditions:
+  - displayName: bounce-scan errors > 3 in 1h
+    conditionThreshold:
+      filter: |
+        resource.type = "cloud_run_revision"
+        AND metric.type = "logging.googleapis.com/user/cron_scan_bounces_failed"
+      aggregations:
+        - alignmentPeriod: 60s
+          perSeriesAligner: ALIGN_DELTA
+          crossSeriesReducer: REDUCE_SUM
+      comparison: COMPARISON_GT
+      thresholdValue: 3
+      duration: 3600s
+      trigger:
+        count: 1
+documentation:
+  content: |
+    /api/cron/scan-bounces failed more than 3 times in the last hour.
+    Most likely cause: Workspace DWD entry for the bounce-scan SA lost
+    the gmail.readonly scope (re-add it in admin → Security → API
+    controls → Domain-wide delegation). Less likely: Gmail API quota
+    or auth secret rotation.
+  mimeType: text/markdown

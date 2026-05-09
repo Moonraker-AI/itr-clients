@@ -1,0 +1,33 @@
+# /ready DB check failures — log-based metric ready_db_check_failed.
+# Created by scripts/apply-monitoring.sh before this policy is applied.
+#
+# Even one failure means the readiness probe is reporting unhealthy and
+# the load balancer will start dropping the instance. Sustained failures
+# = full DB outage and we need to page immediately.
+displayName: /ready DB failures (itr-client-hq)
+combiner: OR
+notificationChannels:
+  - ${CHANNEL}
+conditions:
+  - displayName: any /ready DB failure in 5 min
+    conditionThreshold:
+      filter: |
+        resource.type = "cloud_run_revision"
+        AND metric.type = "logging.googleapis.com/user/ready_db_check_failed"
+      aggregations:
+        - alignmentPeriod: 60s
+          perSeriesAligner: ALIGN_DELTA
+          crossSeriesReducer: REDUCE_SUM
+      comparison: COMPARISON_GT
+      thresholdValue: 0
+      duration: 300s
+      trigger:
+        count: 1
+documentation:
+  content: |
+    The /ready endpoint failed its DB check at least once in the last
+    5 minutes. Check Cloud SQL instance health, connection pool
+    saturation, and recent migration deploys. If it's a transient
+    network blip the next probe will recover; if sustained, treat as
+    a DB outage.
+  mimeType: text/markdown
