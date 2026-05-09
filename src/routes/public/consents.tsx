@@ -174,10 +174,20 @@ publicConsentsRoute.get('/:token', async (c) => {
       );
       break;
     case 'awaiting_deposit':
+      // v0.24.1: surface the deposit checkout button directly on the
+      // status page so the client doesn't have to wait for the email
+      // reminder. The button targets the existing public checkout
+      // route which creates the Stripe Checkout Session and redirects.
       nextStep = (
-        <p class="text-sm text-muted-foreground">
-          All consents are signed. Deposit checkout link is coming next.
-        </p>
+        <div class="space-y-3">
+          <p class="text-sm text-muted-foreground">
+            All consents are signed. Continue to your deposit to confirm
+            your retreat.
+          </p>
+          <LinkButton href={`/c/${ctx.clientToken}/checkout`} size="lg">
+            Pay deposit ({formatCents(ctx.depositCents)})
+          </LinkButton>
+        </div>
       );
       break;
     case 'scheduled':
