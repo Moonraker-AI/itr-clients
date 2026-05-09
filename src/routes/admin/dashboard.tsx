@@ -295,9 +295,14 @@ adminDashboardRoute.get('/', async (c) => {
           </Alert>
         ) : null}
 
-        <form method="post" action="/admin/bulk">
+        <form method="post" action="/admin/bulk" class="group/bulk">
           <CsrfInput token={csrfToken} />
-          <div class="mb-3 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          {/* Bulk action toolbar — hidden until at least one row is
+              selected. Reduces visual prominence of two destructive-
+              adjacent buttons that admins rarely need (typical day:
+              zero bulk operations). Uses Tailwind v4's named group +
+              :has() variant; works in every modern browser. */}
+          <div class="hidden group-has-[input:checked]/bulk:flex mb-3 flex-wrap items-center gap-2 text-sm text-muted-foreground">
             <span>With selected:</span>
             <Button type="submit" name="action" value="resend-consent" variant="outline" size="sm">
               Resend consent emails
