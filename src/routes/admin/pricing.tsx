@@ -45,6 +45,8 @@ type Row = {
   halfDay: number | null;
   active: boolean;
   locationName: string | null;
+  connectAccountId: string | null;
+  payoutPct: string;
 };
 
 adminPricingRoute.get('/', async (c) => {
@@ -63,6 +65,8 @@ adminPricingRoute.get('/', async (c) => {
       halfDay: therapists.defaultHalfDayCents,
       active: therapists.active,
       locationName: locations.name,
+      connectAccountId: therapists.stripeConnectAccountId,
+      payoutPct: therapists.therapistPayoutPct,
     })
     .from(therapists)
     .leftJoin(locations, eq(therapists.primaryLocationId, locations.id))
@@ -114,6 +118,8 @@ adminPricingRoute.get('/', async (c) => {
                   <Th>Location</Th>
                   <Th class="text-right">Full day ($)</Th>
                   <Th class="text-right">Half day ($)</Th>
+                  <Th class="text-right">Payout %</Th>
+                  <Th>Connect</Th>
                   <Th>Active</Th>
                   <Th></Th>
                 </Tr>
@@ -147,6 +153,28 @@ adminPricingRoute.get('/', async (c) => {
                         placeholder="-"
                         class="w-28 text-right inline-block"
                       />
+                    </Td>
+                    <Td class="text-right">
+                      <Input
+                        form={`t-${t.slug}`}
+                        name="payout_pct"
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        value={Number(t.payoutPct).toFixed(2)}
+                        required
+                        class="w-24 text-right inline-block"
+                      />
+                    </Td>
+                    <Td>
+                      {t.connectAccountId ? (
+                        <code class="font-mono text-xs">
+                          {t.connectAccountId.slice(0, 14)}…
+                        </code>
+                      ) : (
+                        <span class="text-xs text-muted-foreground">none</span>
+                      )}
                     </Td>
                     <Td>
                       {t.active ? (
@@ -236,12 +264,19 @@ adminPricingRoute.post('/therapist', async (c) => {
     halfDayCents = Math.round(halfDollars * 100);
   }
 
+  const payoutPctRaw = String(form.get('payout_pct') ?? '').trim();
+  const payoutPct = Number(payoutPctRaw);
+  if (!Number.isFinite(payoutPct) || payoutPct < 0 || payoutPct > 100) {
+    return c.json({ error: 'invalid_payout_pct' }, 400);
+  }
+
   const { db } = await getDb();
   const result = await db
     .update(therapists)
     .set({
       defaultFullDayCents: fullDayCents,
       defaultHalfDayCents: halfDayCents,
+      therapistPayoutPct: payoutPct.toFixed(2),
     })
     .where(eq(therapists.slug, slug))
     .returning({ id: therapists.id });
@@ -254,6 +289,7 @@ adminPricingRoute.post('/therapist', async (c) => {
     slug,
     fullDayCents,
     halfDayCents,
+    payoutPct,
     updatedByEmail: user.email ?? null,
   });
 

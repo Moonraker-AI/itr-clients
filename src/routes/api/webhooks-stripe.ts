@@ -214,9 +214,127 @@ async function dispatch(event: Stripe.Event): Promise<void> {
       });
       return;
     }
+    case 'transfer.created':
+    case 'transfer.updated': {
+      // Phase C (v0.26.0). Destination charges create a Transfer
+      // automatically at capture; this is our notification that the
+      // therapist's share moved off the platform balance into the
+      // connected account. We treat it as `paid` immediately because
+      // destination-charge transfers are instant — the
+      // pending/in_transit states in the enum are reserved for future
+      // separate-transfer flows.
+      const transfer = event.data.object as Stripe.Transfer;
+      await upsertPayoutFromTransfer(transfer, event.id, 'paid');
+      return;
+    }
+    case 'transfer.reversed': {
+      const transfer = event.data.object as Stripe.Transfer;
+      await upsertPayoutFromTransfer(transfer, event.id, 'reversed');
+      return;
+    }
     default:
       log.info('stripe_webhook_event_ignored', { type: event.type });
       return;
+  }
+}
+
+/**
+ * Upsert a payouts row from a Stripe Transfer event (Phase C, v0.26.0).
+ *
+ * Lookup chain to populate FKs:
+ *   transfer.destination       → therapists.stripe_connect_account_id (REQUIRED)
+ *   transfer.source_transaction → payments.stripe_charge_id            (best-effort)
+ *   payments.retreat_id        → retreats                              (best-effort)
+ *
+ * Idempotent on stripe_transfer_id (UNIQUE). Reruns of the same event
+ * just update status — no double-insert.
+ *
+ * Therapist lookup is REQUIRED: an unrecognised destination account
+ * means either a stale connect_id in our DB or someone else's transfer
+ * routed through our platform — both warrant a 500 so Stripe retries
+ * (and the on-call human notices).
+ */
+async function upsertPayoutFromTransfer(
+  transfer: Stripe.Transfer,
+  eventId: string,
+  status: 'paid' | 'reversed',
+): Promise<void> {
+  const { getDb } = await import('../../db/client.js');
+  const { payments, payouts, therapists } = await import('../../db/schema.js');
+  const { eq } = await import('drizzle-orm');
+  const { db } = await getDb();
+
+  const [therapist] = await db
+    .select({ id: therapists.id })
+    .from(therapists)
+    .where(eq(therapists.stripeConnectAccountId, transfer.destination as string));
+  if (!therapist) {
+    throw new Error(
+      `transfer.destination ${transfer.destination as string} has no matching therapist row`,
+    );
+  }
+
+  let retreatId: string | null = null;
+  let paymentId: string | null = null;
+  if (transfer.source_transaction) {
+    const chargeId =
+      typeof transfer.source_transaction === 'string'
+        ? transfer.source_transaction
+        : transfer.source_transaction.id;
+    const [pmt] = await db
+      .select({ id: payments.id, retreatId: payments.retreatId })
+      .from(payments)
+      .where(eq(payments.stripeChargeId, chargeId));
+    if (pmt) {
+      retreatId = pmt.retreatId;
+      paymentId = pmt.id;
+    } else {
+      // Race: payments row not yet written by our deposit/final-charge
+      // path. NULL FKs let the row land; a follow-up event (e.g.
+      // transfer.reversed) re-resolves them via this same lookup.
+      log.warn('stripe_webhook_transfer_no_matching_payment', {
+        transferId: transfer.id,
+        chargeId,
+      });
+    }
+  }
+
+  await db
+    .insert(payouts)
+    .values({
+      retreatId,
+      paymentId,
+      therapistId: therapist.id,
+      stripeTransferId: transfer.id,
+      destinationAccountId: transfer.destination as string,
+      amountCents: transfer.amount,
+      status,
+    })
+    .onConflictDoUpdate({
+      target: payouts.stripeTransferId,
+      set: {
+        status,
+        ...(retreatId ? { retreatId } : {}),
+        ...(paymentId ? { paymentId } : {}),
+        updatedAt: new Date(),
+      },
+    });
+
+  log.info('stripe_webhook_payout_upserted', {
+    eventId,
+    transferId: transfer.id,
+    therapistId: therapist.id,
+    status,
+    amountCents: transfer.amount,
+  });
+
+  if (status === 'reversed') {
+    log.warn('stripe_webhook_payout_reversed', {
+      eventId,
+      transferId: transfer.id,
+      therapistId: therapist.id,
+      amountCents: transfer.amount,
+    });
   }
 }
 

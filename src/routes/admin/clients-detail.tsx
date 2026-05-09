@@ -19,6 +19,7 @@ import {
   emailLog,
   locations,
   payments,
+  payouts,
   retreatRequiredConsents,
   retreats,
   therapists,
@@ -170,6 +171,33 @@ adminClientsDetailRoute.get('/:id', async (c) => {
     .where(eq(payments.retreatId, id))
     .orderBy(desc(payments.createdAt));
 
+  // Phase C (v0.26.0). Connect payouts for this retreat. Grouped by
+  // payment_id so each payment row can render its matching transfer(s).
+  // Payouts with NULL payment_id (race between transfer.created and
+  // payments insert) are surfaced unattached at the bottom of the card.
+  const payoutRows = await db
+    .select({
+      id: payouts.id,
+      paymentId: payouts.paymentId,
+      stripeTransferId: payouts.stripeTransferId,
+      amountCents: payouts.amountCents,
+      status: payouts.status,
+      createdAt: payouts.createdAt,
+    })
+    .from(payouts)
+    .where(eq(payouts.retreatId, id))
+    .orderBy(desc(payouts.createdAt));
+  // Orphans (payment_id IS NULL — race between transfer.created and our
+  // payments insert) are visible on /admin/payouts; not surfaced here to
+  // keep the card focused on the per-payment correlation.
+  const payoutsByPaymentId = new Map<string, typeof payoutRows>();
+  for (const p of payoutRows) {
+    if (!p.paymentId) continue;
+    const arr = payoutsByPaymentId.get(p.paymentId) ?? [];
+    arr.push(p);
+    payoutsByPaymentId.set(p.paymentId, arr);
+  }
+
   // Stripe dashboard mode: pick `/test/` segment when our secret key is
   // a test-mode key, otherwise live. Restricted keys (`rk_*`) follow the
   // same `_test_`/`_live_` convention as secret keys (`sk_*`).
@@ -184,6 +212,16 @@ adminClientsDetailRoute.get('/:id', async (c) => {
     // are written for $0 final-charge rows and have no Stripe object.
     if (!pi || pi.startsWith('final_zero_')) return null;
     return `${stripeBase}/payments/${pi}`;
+  };
+  const stripeTransferUrl = (transferId: string): string =>
+    `${stripeBase}/connect/transfers/${transferId}`;
+  const payoutBadgeVariant = (
+    status: 'pending' | 'in_transit' | 'paid' | 'failed' | 'reversed',
+  ): 'default' | 'secondary' | 'destructive' | 'success' | 'outline' => {
+    if (status === 'paid') return 'success';
+    if (status === 'reversed' || status === 'failed') return 'destructive';
+    if (status === 'in_transit') return 'default';
+    return 'secondary';
   };
 
   const publicBase = process.env.PUBLIC_BASE_URL ?? `${c.req.url.split('/admin')[0]}`;
@@ -484,12 +522,13 @@ adminClientsDetailRoute.get('/:id', async (c) => {
                       </Td>
                     </Tr>
                   ) : (
-                    paymentRows.map((p) => {
+                    paymentRows.flatMap((p) => {
                       const piUrl = p.stripePaymentIntentId
                         ? stripePiUrl(p.stripePaymentIntentId)
                         : null;
                       const failed = p.status === 'failed';
-                      return (
+                      const matchingPayouts = payoutsByPaymentId.get(p.id) ?? [];
+                      const trs = [
                         <Tr>
                           <Td class="text-xs text-muted-foreground whitespace-nowrap">
                             {p.createdAt.toISOString()}
@@ -529,8 +568,42 @@ adminClientsDetailRoute.get('/:id', async (c) => {
                               </code>
                             )}
                           </Td>
-                        </Tr>
-                      );
+                        </Tr>,
+                      ];
+                      for (const po of matchingPayouts) {
+                        trs.push(
+                          <Tr class="bg-muted/30">
+                            <Td class="text-xs text-muted-foreground whitespace-nowrap pl-8">
+                              ↳ payout
+                            </Td>
+                            <Td class="text-xs text-muted-foreground">therapist</Td>
+                            <Td class="text-sm font-medium">
+                              {formatCents(po.amountCents)}
+                            </Td>
+                            <Td>
+                              <Badge variant={payoutBadgeVariant(po.status)}>
+                                {po.status}
+                              </Badge>
+                            </Td>
+                            <Td class="text-xs text-muted-foreground" />
+                            <Td>
+                              {po.stripeTransferId ? (
+                                <a
+                                  href={stripeTransferUrl(po.stripeTransferId)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  class="font-mono text-xs underline hover:text-primary"
+                                >
+                                  {po.stripeTransferId} ↗
+                                </a>
+                              ) : (
+                                <span class="text-xs text-muted-foreground">—</span>
+                              )}
+                            </Td>
+                          </Tr>,
+                        );
+                      }
+                      return trs;
                     })
                   )}
                 </Tbody>

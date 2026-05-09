@@ -21,6 +21,7 @@ import { adminBulkRoute } from './routes/admin/bulk.js';
 import { adminEmailPreviewRoute } from './routes/admin/email-preview.js';
 import { adminDashboardRoute } from './routes/admin/dashboard.js';
 import { adminExportRoute } from './routes/admin/export.js';
+import { adminPayoutsRoute } from './routes/admin/payouts.js';
 import { adminPricingRoute } from './routes/admin/pricing.js';
 import { adminRefundRoute } from './routes/admin/refund.js';
 import { adminLoginRoute } from './routes/auth/login.js';
@@ -163,6 +164,7 @@ if (!webhookOnly) {
 
   app.route('/admin/pricing', adminPricingRoute);
   app.route('/admin/audit', adminAuditRoute);
+  app.route('/admin/payouts', adminPayoutsRoute);
   app.route('/admin/bulk', adminBulkRoute);
   app.route('/admin/email-preview', adminEmailPreviewRoute);
   app.route('/admin/clients/new', adminClientsNewRoute);
