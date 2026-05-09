@@ -114,7 +114,11 @@ async function main() {
       .returning({ id: retreats.id, clientToken: retreats.clientToken });
     if (!retreat) throw new Error('retreat insert failed');
 
-    for (const tpl of templateIds.values()) {
+    // Smoke retreat seeds as a standard ITR program. Skip every kair-*
+    // template so the ITR consent flow stays clean (KAIR templates are
+    // covered by a separate seed once we add a kair smoke variant).
+    for (const [name, tpl] of templateIds) {
+      if (name.startsWith('kair-')) continue;
       await tx.insert(retreatRequiredConsents).values({
         retreatId: retreat.id,
         templateId: tpl.id,

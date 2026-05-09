@@ -52,11 +52,20 @@ export interface RequiredField {
   options?: string[];
 }
 
+/**
+ * Where a template renders. v0.24.0 added 'portal_resource' for the KAIR
+ * informational docs (Pre-KAIR / After-KAIR / Resources) that live on
+ * /c/[token]/resources after the main consent is signed; everything else
+ * stays on 'signature' (the existing /c/[token]/consents flow).
+ */
+export type TemplateSurface = 'signature' | 'portal_resource';
+
 export interface TemplateMeta {
   name: string;
   version: number;
   title: string;
   requiresSignature: boolean;
+  surface: TemplateSurface;
   effectiveDate?: string;
   requiredFields: RequiredField[];
 }
@@ -85,6 +94,11 @@ function parseTemplateFile(filePath: string): LoadedTemplate {
   const effectiveDate = fm['effective_date']
     ? String(fm['effective_date'])
     : undefined;
+  // Default to 'signature' so legacy templates load unchanged. KAIR
+  // resources opt in via `surface: portal_resource` in their frontmatter.
+  const surfaceRaw = fm['surface'] ? String(fm['surface']) : 'signature';
+  const surface: TemplateSurface =
+    surfaceRaw === 'portal_resource' ? 'portal_resource' : 'signature';
 
   if (!name || !Number.isFinite(version) || !title) {
     throw new Error(`consent template frontmatter incomplete: ${filePath}`);
@@ -95,6 +109,7 @@ function parseTemplateFile(filePath: string): LoadedTemplate {
       version,
       title,
       requiresSignature,
+      surface,
       requiredFields,
       ...(effectiveDate ? { effectiveDate } : {}),
     },
@@ -203,8 +218,15 @@ export function renderTemplate(input: RenderTemplateInput): RenderedTemplate {
  * Returns a map keyed by template name → DB row id of the LATEST version
  * known on disk (which is also the latest in DB after this call).
  */
+export interface SyncedTemplate {
+  id: string;
+  version: number;
+  requiresSignature: boolean;
+  surface: TemplateSurface;
+}
+
 export async function syncConsentTemplatesToDb(): Promise<
-  Map<string, { id: string; version: number; requiresSignature: boolean }>
+  Map<string, SyncedTemplate>
 > {
   // Late import — keep this module DB-free for the smoke harness.
   const { getDb } = await import('../db/client.js');
@@ -212,10 +234,7 @@ export async function syncConsentTemplatesToDb(): Promise<
   const { and, eq } = await import('drizzle-orm');
 
   const { db } = await getDb();
-  const out = new Map<
-    string,
-    { id: string; version: number; requiresSignature: boolean }
-  >();
+  const out = new Map<string, SyncedTemplate>();
 
   for (const t of loadTemplates().values()) {
     const existing = await db
@@ -223,6 +242,7 @@ export async function syncConsentTemplatesToDb(): Promise<
         id: consentTemplates.id,
         version: consentTemplates.version,
         requiresSignature: consentTemplates.requiresSignature,
+        surface: consentTemplates.surface,
       })
       .from(consentTemplates)
       .where(
@@ -242,6 +262,7 @@ export async function syncConsentTemplatesToDb(): Promise<
           bodyMarkdown: t.body,
           requiredFields: t.meta.requiredFields,
           requiresSignature: t.meta.requiresSignature,
+          surface: t.meta.surface,
           publishedAt: new Date(),
           active: true,
         })
@@ -249,10 +270,16 @@ export async function syncConsentTemplatesToDb(): Promise<
           id: consentTemplates.id,
           version: consentTemplates.version,
           requiresSignature: consentTemplates.requiresSignature,
+          surface: consentTemplates.surface,
         });
       row = inserted[0]!;
     }
-    out.set(t.meta.name, row);
+    out.set(t.meta.name, {
+      id: row.id,
+      version: row.version,
+      requiresSignature: row.requiresSignature,
+      surface: (row.surface === 'portal_resource' ? 'portal_resource' : 'signature') as TemplateSurface,
+    });
   }
   return out;
 }
