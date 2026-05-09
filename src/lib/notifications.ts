@@ -81,11 +81,20 @@ function esc(s: string): string {
   return s.replace(ESCAPE_RE, (c) => ESCAPE_MAP[c] ?? c);
 }
 
-interface Composed {
+export interface Composed {
   subject: string;
   textBody: string;
   htmlBody: string;
   templateName: string;
+}
+
+/**
+ * Build the subject + text + html body for a notify event WITHOUT sending.
+ * Exposed so the admin /admin/email-preview route can render the same
+ * output a real send would, using fake-but-shaped sample inputs.
+ */
+export function composeNotification(args: NotifyArgs): Composed {
+  return compose(args);
 }
 
 function compose(args: NotifyArgs): Composed {
