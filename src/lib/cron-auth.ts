@@ -15,6 +15,8 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { Context } from 'hono';
 
+import { log } from './phi-redactor.js';
+
 export function verifyCronSecret(c: Context): boolean {
   const expected = process.env.CRON_SHARED_SECRET;
   if (!expected) {
@@ -27,6 +29,17 @@ export function verifyCronSecret(c: Context): boolean {
   // common-prefix length.
   const a = Buffer.from(got);
   const b = Buffer.from(expected);
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
+  const ok = a.length === b.length && timingSafeEqual(a, b);
+  if (!ok) {
+    // Single grep-able log line for the cron_auth_failed monitoring metric.
+    // Whether the request had no header at all or the wrong value, both
+    // mean the same thing operationally: a stale Cloud Scheduler job (or
+    // an external probe). Per-route handlers still log their own
+    // `<routeName>_unauthorized` line for ergonomics.
+    log.warn('cron_shared_secret_mismatch', {
+      path: c.req.path,
+      hadHeader: a.length > 0,
+    });
+  }
+  return ok;
 }

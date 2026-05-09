@@ -1,8 +1,26 @@
 # Monitoring + alerting runbook (P1 #9)
 
-Cloud Monitoring policies you should configure on the prod project before
-real clients use the system. Dev should mirror most of these too —
-catch regressions during the smoke flow.
+**Status: implemented in v0.13.0** — apply with `scripts/apply-monitoring.sh dev|prod`.
+The script is idempotent: it bootstraps the notification channel, all
+log-based metrics, every alerting policy under `infra/alerting/`, and
+the overview dashboard. Re-run after editing any YAML to push updates.
+
+The remaining sections below describe what the script provisions and
+how to read the alerts when they fire. Hand-rolled gcloud commands are
+preserved for reference / debugging.
+
+## TL;DR — apply
+
+```bash
+# One-time per project (creates 5 log metrics, 7 policies, 1 dashboard).
+scripts/apply-monitoring.sh dev
+scripts/apply-monitoring.sh prod
+```
+
+The notification channel email defaults to `support@moonraker.ai`;
+override with `ALERT_EMAIL=<addr>` if needed.
+
+## Reference
 
 All commands assume `gcloud config set project <PROD_PROJECT>` first.
 
@@ -130,7 +148,7 @@ gcloud logging metrics create stripe_webhook_failed \
   --description="Stripe webhook handler raised" \
   --log-filter='resource.type="cloud_run_revision"
     resource.labels.service_name="itr-stripe-webhook"
-    jsonPayload.message="unhandled_error"'
+    jsonPayload.message="stripe_webhook_dispatch_failed"'
 ```
 
 Alert: any non-zero count in 10 min → page. Webhook drops mean Stripe will
@@ -165,6 +183,26 @@ gcloud logging metrics create cron_auth_failed \
   --log-filter='resource.type="cloud_run_revision"
     jsonPayload.message="cron_shared_secret_mismatch"'
 ```
+
+The `cron_shared_secret_mismatch` log line is emitted by
+`src/lib/cron-auth.ts` whenever `verifyCronSecret` returns false (v0.13.0).
+
+### g. Bounce-scan cron failures (v0.12.0+)
+
+The `/api/cron/scan-bounces` handler wraps `listBounces()` in a try/catch
+and emits `cron_scan_bounces_failed` on any error. Most likely cause is
+the Workspace DWD entry losing its `gmail.readonly` scope; second most
+likely is Gmail API quota.
+
+```bash
+gcloud logging metrics create cron_scan_bounces_failed \
+  --description="Bounce-scan cron handler raised" \
+  --log-filter='resource.type="cloud_run_revision"
+    jsonPayload.message="cron_scan_bounces_failed"'
+```
+
+Threshold for paging: > 3 failures in 1 hour (vs the cron's 30-min
+cadence ⇒ allows one transient blip without waking ops).
 
 ---
 
