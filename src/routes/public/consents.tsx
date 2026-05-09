@@ -195,6 +195,59 @@ publicConsentsRoute.get('/:token', async (c) => {
         <p class="text-sm text-muted-foreground">Your retreat is scheduled. See you soon.</p>
       );
       break;
+    // v0.24.1: every state below previously fell through to the
+    // diagnostic-only `default` branch, leaving the dashboard with no
+    // CTA + a raw state-code line. Each state now has explicit copy +
+    // an action where one applies (final_charge_failed → recovery link).
+    case 'in_progress':
+      nextStep = (
+        <p class="text-sm text-muted-foreground">
+          Your retreat is underway. Your therapist will contact you with
+          any next steps.
+        </p>
+      );
+      break;
+    case 'awaiting_final_charge':
+      nextStep = (
+        <p class="text-sm text-muted-foreground">
+          Your retreat is complete. We are processing the final balance
+          on your saved card and will email a receipt shortly.
+        </p>
+      );
+      break;
+    case 'completed':
+      nextStep = (
+        <p class="text-sm text-muted-foreground">
+          Your retreat is complete and your final balance has been paid
+          in full. Thank you for choosing Intensive Therapy Retreats.
+        </p>
+      );
+      break;
+    case 'final_charge_failed':
+      nextStep = (
+        <div class="space-y-3">
+          <p class="text-sm text-foreground">
+            We were unable to charge the final balance on your saved card.
+            Update your payment method to continue.
+          </p>
+          <LinkButton href={`/c/${ctx.clientToken}/update-payment`} size="lg">
+            Update payment method
+          </LinkButton>
+          <p class="text-xs text-muted-foreground">
+            If you've already replied to our recovery email, no further
+            action is needed — we'll retry automatically.
+          </p>
+        </div>
+      );
+      break;
+    case 'cancelled':
+      nextStep = (
+        <p class="text-sm text-muted-foreground">
+          This retreat has been cancelled. If this was unexpected,
+          please contact your therapist.
+        </p>
+      );
+      break;
     default:
       nextStep = (
         <p class="text-sm text-muted-foreground">
