@@ -51,6 +51,9 @@ interface TherapistOption {
   fullName: string;
   defaultFullDayCents: number;
   defaultHalfDayCents: number | null;
+  kairEligible: boolean;
+  kairFullDayCents: number | null;
+  kairHalfDayCents: number | null;
 }
 
 adminClientsNewRoute.get('/', async (c) => {
@@ -62,6 +65,9 @@ adminClientsNewRoute.get('/', async (c) => {
       fullName: therapists.fullName,
       defaultFullDayCents: therapists.defaultFullDayCents,
       defaultHalfDayCents: therapists.defaultHalfDayCents,
+      kairEligible: therapists.kairEligible,
+      kairFullDayCents: therapists.kairFullDayCents,
+      kairHalfDayCents: therapists.kairHalfDayCents,
     })
     .from(therapists)
     .where(eq(therapists.active, true))
@@ -106,9 +112,13 @@ adminClientsNewRoute.get('/', async (c) => {
                   <Select id="therapist_id" name="therapist_id" required>
                     <option value="">Select…</option>
                     {(therapistRows as TherapistOption[]).map((t) => (
-                      <option value={t.id}>
+                      <option
+                        value={t.id}
+                        data-kair-eligible={t.kairEligible ? '1' : '0'}
+                      >
                         {t.fullName} ({formatCents(t.defaultFullDayCents)} /{' '}
                         {t.defaultHalfDayCents == null ? '-' : formatCents(t.defaultHalfDayCents)})
+                        {t.kairEligible ? ' · KAIR' : ''}
                       </option>
                     ))}
                   </Select>
@@ -116,6 +126,32 @@ adminClientsNewRoute.get('/', async (c) => {
               )}
             </CardContent>
           </Card>
+
+          {/* Retreat type — only relevant when the selected therapist is
+              KAIR-eligible. For the self-therapist (non-admin) path, server
+              renders unhidden iff their own row is kair_eligible. For the
+              admin dropdown path, server renders hidden + admin-shell.js
+              toggles visibility based on the selected option's
+              data-kair-eligible attribute. The hidden input ensures
+              program=itr is submitted when the field is invisible. */}
+          <div
+            id="retreat-type-block"
+            hidden={isTherapist && selfTherapist ? !selfTherapist.kairEligible : true}
+          >
+            <Card>
+              <CardHeader>
+                <CardTitle>Retreat type</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Field label="Program" for="program">
+                  <Select id="program" name="program">
+                    <option value="itr">Standard ITR</option>
+                    <option value="kair">KAIR (Ketamine-Assisted Intensive Retreat)</option>
+                  </Select>
+                </Field>
+              </CardContent>
+            </Card>
+          </div>
 
           <Card>
             <CardHeader>
@@ -249,6 +285,11 @@ adminClientsNewRoute.post('/', async (c) => {
   const pricingNotes = get('pricing_notes').trim() || null;
   const overrideFullDayDollars = get('override_full_day');
   const overrideHalfDayDollars = get('override_half_day');
+  // KAIR program (v0.23.0). Hidden from the form when the selected therapist
+  // is not kair-eligible; defaulted to 'itr' on submit either way. The
+  // server-side gate below enforces the eligibility constraint regardless.
+  const programRaw = (get('program') as 'itr' | 'kair') || 'itr';
+  const program: 'itr' | 'kair' = programRaw === 'kair' ? 'kair' : 'itr';
 
   if (!therapistId || !firstName || !lastName || !email) {
     return c.json({ error: 'missing_required_fields' }, 400);
@@ -306,8 +347,24 @@ adminClientsNewRoute.post('/', async (c) => {
     if (!Number.isFinite(n) || n < 0 || n > 10_000) return 'invalid';
     return Math.round(n * 100);
   };
-  let fullDayRateCents = t.defaultFullDayCents;
-  let halfDayRateCents = t.defaultHalfDayCents;
+  // Program-aware base rates. KAIR retreats use the therapist's KAIR rates;
+  // ITR uses the standard defaults. Server-side eligibility check is the
+  // authoritative one — the UI hides the option for non-eligible therapists
+  // but a tampered form must still be rejected.
+  if (program === 'kair') {
+    if (!t.kairEligible) {
+      return c.json({ error: 'therapist_not_kair_eligible' }, 400);
+    }
+    if (t.kairFullDayCents == null) {
+      return c.json({ error: 'therapist_missing_kair_rate' }, 400);
+    }
+  }
+  let fullDayRateCents =
+    program === 'kair' && t.kairFullDayCents != null
+      ? t.kairFullDayCents
+      : t.defaultFullDayCents;
+  let halfDayRateCents =
+    program === 'kair' ? t.kairHalfDayCents : t.defaultHalfDayCents;
   if (pricingBasis !== 'standard') {
     const overrideFull = parseDollarOverride(overrideFullDayDollars);
     if (overrideFull === 'invalid') {
@@ -363,6 +420,7 @@ adminClientsNewRoute.post('/', async (c) => {
         therapistId,
         locationId: t.primaryLocationId,
         state: 'draft',
+        program,
         plannedFullDays,
         plannedHalfDays,
         paymentMethod,
@@ -378,7 +436,12 @@ adminClientsNewRoute.post('/', async (c) => {
       .returning({ id: retreats.id, clientToken: retreats.clientToken });
     if (!retreat) throw new Error('retreat insert failed');
 
-    for (const tpl of templateIds.values()) {
+    // Program-aware consent set: each retreat gets either the standard
+    // informed-consent or the kair-informed-consent, never both. The other
+    // shared templates (NPP, emergency-contact-release) attach to both.
+    const skipName = program === 'kair' ? 'informed-consent' : 'kair-informed-consent';
+    for (const [name, tpl] of templateIds) {
+      if (name === skipName) continue;
       await tx.insert(retreatRequiredConsents).values({
         retreatId: retreat.id,
         templateId: tpl.id,
