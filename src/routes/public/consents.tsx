@@ -65,6 +65,7 @@ export const publicConsentsRoute = new Hono();
 interface RetreatContext {
   retreatId: string;
   retreatState: string;
+  program: 'itr' | 'kair';
   clientId: string;
   clientFirstName: string;
   clientToken: string;
@@ -83,6 +84,7 @@ async function loadByToken(token: string): Promise<RetreatContext | null> {
     .select({
       retreatId: retreats.id,
       retreatState: retreats.state,
+      program: retreats.program,
       clientId: retreats.clientId,
       clientToken: retreats.clientToken,
       fullDayRateCents: retreats.fullDayRateCents,
@@ -102,6 +104,7 @@ async function loadByToken(token: string): Promise<RetreatContext | null> {
   return {
     retreatId: row.retreatId,
     retreatState: row.retreatState,
+    program: row.program,
     clientId: row.clientId,
     clientFirstName: row.clientFirstName,
     clientToken: row.clientToken,
@@ -126,6 +129,7 @@ publicConsentsRoute.get('/:token', async (c) => {
       templateId: retreatRequiredConsents.templateId,
       name: consentTemplates.name,
       requiresSignature: consentTemplates.requiresSignature,
+      surface: consentTemplates.surface,
     })
     .from(retreatRequiredConsents)
     .innerJoin(consentTemplates, eq(retreatRequiredConsents.templateId, consentTemplates.id))
@@ -138,12 +142,20 @@ publicConsentsRoute.get('/:token', async (c) => {
     .where(eq(consentSignatures.retreatId, ctx.retreatId));
   const signedSet = new Set(signed.map((s) => s.templateId));
 
-  const items = required.map((r) => ({
+  const allItems = required.map((r) => ({
     name: r.name,
     title: getTemplate(r.name).meta.title,
     requiresSignature: r.requiresSignature,
+    surface: r.surface,
     signed: signedSet.has(r.templateId),
   }));
+  // Split by surface. Signature items render in the "Required documents"
+  // card; portal_resource items live on /c/[token]/resources and surface
+  // here as a separate "Program resources" card once the signing flow has
+  // produced at least one signed required-signature template.
+  const items = allItems.filter((i) => i.surface !== 'portal_resource');
+  const resourceItems = allItems.filter((i) => i.surface === 'portal_resource');
+  const anySigned = items.some((i) => i.requiresSignature && i.signed);
   const next = items.find((i) => i.requiresSignature && !i.signed);
   const allSigned = items.every((i) => !i.requiresSignature || i.signed);
 
@@ -219,6 +231,33 @@ publicConsentsRoute.get('/:token', async (c) => {
         </Card>
 
         <div class="mb-6">{nextStep}</div>
+
+        {ctx.program === 'kair' && resourceItems.length > 0 && anySigned ? (
+          <Card class="mb-6">
+            <CardHeader>
+              <CardTitle>Program resources</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p class="text-sm text-muted-foreground mb-3">
+                Educational materials for your KAIR program. These are for reference — no
+                signature required.
+              </p>
+              <ul class="space-y-3">
+                {resourceItems.map((i) => (
+                  <li class="flex items-center justify-between gap-3 text-sm">
+                    <a
+                      href={`/c/${ctx.clientToken}/resources/${i.name}`}
+                      class="text-primary underline-offset-4 hover:underline"
+                    >
+                      {i.title}
+                    </a>
+                    <Badge variant="outline">resource</Badge>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        ) : null}
 
         <p class="text-xs text-muted-foreground">
           All {allSigned ? 'consents are' : 'documents will be'} stored securely and you will receive a
@@ -385,6 +424,66 @@ publicConsentsRoute.get('/:token/view/:templateName', async (c) => {
             </Card>
           </>
         ) : null}
+
+        <LinkButton href={`/c/${token}`} variant="outline">
+          ← Back to retreat status
+        </LinkButton>
+      </ClientShell>
+    </Layout>,
+  );
+});
+
+/**
+ * Read-only KAIR program resource (v0.24.0). Renders any portal_resource
+ * template attached to this retreat. Gated to retreats with program=kair
+ * to prevent ITR clients from stumbling onto KAIR-specific content.
+ * Returns 404 if the template isn't attached to this retreat or program
+ * doesn't match — same content-discovery-oracle protection as /view.
+ */
+publicConsentsRoute.get('/:token/resources/:templateName', async (c) => {
+  const token = c.req.param('token');
+  const templateName = c.req.param('templateName');
+  const ctx = await loadByToken(token);
+  if (!ctx) return c.notFound();
+  if (ctx.program !== 'kair') return c.notFound();
+
+  const { db } = await getDb();
+  const required = await db
+    .select({
+      name: consentTemplates.name,
+      surface: consentTemplates.surface,
+      body: consentTemplates.bodyMarkdown,
+    })
+    .from(retreatRequiredConsents)
+    .innerJoin(consentTemplates, eq(retreatRequiredConsents.templateId, consentTemplates.id))
+    .where(eq(retreatRequiredConsents.retreatId, ctx.retreatId));
+
+  const tpl = required.find((r) => r.name === templateName && r.surface === 'portal_resource');
+  if (!tpl) return c.notFound();
+
+  let title = templateName;
+  try {
+    title = getTemplate(templateName).meta.title;
+  } catch {
+    /* fall back to raw name */
+  }
+
+  const substituted = substitute(tpl.body, buildTemplateVars(ctx));
+  const bodyHtml = marked.parse(substituted, { async: false }) as string;
+
+  return c.html(
+    <Layout title={`${title} - Intensive Therapy Retreats`}>
+      <ClientShell width="xl">
+        <h1 class="text-2xl font-semibold tracking-tight mb-2">{title}</h1>
+        <p class="text-sm text-muted-foreground mb-4">
+          Therapist: <strong class="text-foreground">{ctx.therapistFullName}</strong>
+        </p>
+
+        <Card class="mb-6">
+          <CardContent class="pt-6">
+            <div class={CONSENT_PROSE_CLASS}>{raw(bodyHtml)}</div>
+          </CardContent>
+        </Card>
 
         <LinkButton href={`/c/${token}`} variant="outline">
           ← Back to retreat status

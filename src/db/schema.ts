@@ -270,6 +270,14 @@ export const consentTemplates = pgTable(
      */
     requiredFields: jsonb('required_fields').notNull().default(sql`'[]'::jsonb`),
     requiresSignature: boolean('requires_signature').notNull().default(true),
+    /**
+     * Where this template renders. 'signature' (default) → signing flow at
+     * /c/[token]/consents. 'portal_resource' (v0.24.0) → informational doc
+     * shown at /c/[token]/resources after the main consent is signed; no
+     * signature gate, no submit form. KAIR's pre/after/resources docs use
+     * this surface; the legacy ITR templates stay on 'signature'.
+     */
+    surface: text('surface').notNull().default('signature'),
     publishedAt: timestamp('published_at', { withTimezone: true }),
     active: boolean('active').notNull().default(true),
     createdAt: timestamp('created_at', { withTimezone: true })

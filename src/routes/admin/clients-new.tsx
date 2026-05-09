@@ -436,12 +436,16 @@ adminClientsNewRoute.post('/', async (c) => {
       .returning({ id: retreats.id, clientToken: retreats.clientToken });
     if (!retreat) throw new Error('retreat insert failed');
 
-    // Program-aware consent set: each retreat gets either the standard
-    // informed-consent or the kair-informed-consent, never both. The other
-    // shared templates (NPP, emergency-contact-release) attach to both.
-    const skipName = program === 'kair' ? 'informed-consent' : 'kair-informed-consent';
+    // Program-aware template set:
+    //   ITR retreats: skip every kair-* template (main consent + portal
+    //     resources from v0.24.0).
+    //   KAIR retreats: skip the standard 'informed-consent' (replaced by
+    //     'kair-informed-consent') but include the kair-* portal resources
+    //     so they show up on /c/[token]/resources after signing.
+    // Shared templates (NPP, emergency-contact-release) attach to both.
     for (const [name, tpl] of templateIds) {
-      if (name === skipName) continue;
+      if (program === 'kair' && name === 'informed-consent') continue;
+      if (program !== 'kair' && name.startsWith('kair-')) continue;
       await tx.insert(retreatRequiredConsents).values({
         retreatId: retreat.id,
         templateId: tpl.id,
