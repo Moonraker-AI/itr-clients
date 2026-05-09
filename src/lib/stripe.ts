@@ -131,7 +131,7 @@ function assertMetadata(meta: Record<string, string> | undefined): void {
 const STRIPE_FEE_RATE_BPS = 290; // 2.9% in basis points
 const STRIPE_FEE_FLAT_CENTS = 30;
 
-function estimateStripeFeeCents(grossCents: number): number {
+export function estimateStripeFeeCents(grossCents: number): number {
   if (grossCents <= 0) return 0;
   return Math.round((grossCents * STRIPE_FEE_RATE_BPS) / 10_000) + STRIPE_FEE_FLAT_CENTS;
 }
@@ -161,7 +161,7 @@ function estimateStripeFeeCents(grossCents: number): number {
  * platform absorbs remainder. `fee` is clamped at `G` for the
  * pathological pct=0 case (Stripe rejects app_fee > amount).
  */
-function buildConnectParams(args: {
+export function buildConnectParams(args: {
   connectAccountId: string | null;
   payoutPct: string | number | null;
   amountCents: number;
