@@ -124,7 +124,7 @@ const THERAPISTS: TherapistSeed[] = [
     slug: 'ross-hackerson',
     fullName: 'Ross Hackerson',
     email: 'ross@intensivetherapyretreat.com',
-    role: 'admin',
+    role: 'therapist',
     locationSlug: 'northampton-ma',
     fullDayCents: 240_000,
     halfDayCents: null,

@@ -4,6 +4,7 @@ import { cn } from './cn.js';
 type SelectProps = PropsWithChildren<{
   name?: string | undefined;
   id?: string | undefined;
+  form?: string | undefined;
   required?: boolean | undefined;
   disabled?: boolean | undefined;
   class?: string | undefined;
