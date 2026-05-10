@@ -61,6 +61,8 @@ type AdminShellProps = PropsWithChildren<{
     role?: 'admin' | 'therapist';
   };
   current?: string;
+  /** When true, drops the max-w-6xl content cap. For wide tables (e.g. /admin/pricing). */
+  wide?: boolean;
 }>;
 
 interface NavItem {
@@ -129,7 +131,7 @@ const ICON_BTN_CLASS =
 const TEXT_BTN_CLASS =
   'inline-flex items-center justify-center h-9 px-3 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background';
 
-export const AdminShell: FC<AdminShellProps> = ({ user, current, children }) => {
+export const AdminShell: FC<AdminShellProps> = ({ user, current, wide, children }) => {
   return (
     <div class="flex min-h-screen">
       <aside
@@ -212,7 +214,10 @@ export const AdminShell: FC<AdminShellProps> = ({ user, current, children }) => 
             </button>
           </div>
         </header>
-        <div id="main" class="px-6 py-8 max-w-6xl mx-auto">{children}</div>
+        <div
+          id="main"
+          class={wide ? 'px-6 py-8' : 'px-6 py-8 max-w-6xl mx-auto'}
+        >{children}</div>
       </main>
       <script src="/static/js/admin-shell.js" defer></script>
     </div>
