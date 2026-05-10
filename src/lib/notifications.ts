@@ -89,6 +89,116 @@ export interface Composed {
 }
 
 /**
+ * Brand palette for email-safe HTML (hex equivalents of the OKLCH design
+ * tokens in src/styles/app.css). Gmail / Outlook / Apple Mail don't
+ * reliably support oklch(), so the email template is committed to a
+ * frozen hex snapshot and updated alongside theme bumps.
+ */
+const EMAIL_BRAND = {
+  frame: '#3a5e60',          // dark teal — top + bottom bars
+  frameText: '#f0ede2',      // cream-on-teal text in bars
+  contentBg: '#faf9f4',      // cream content area
+  contentText: '#2c3a3c',    // dark slate body text
+  muted: '#6b7c7e',
+  link: '#3a5e60',
+  rule: '#d6d2c3',
+  pageBg: '#e8e3d4',         // outer page bg
+};
+
+/**
+ * Resolve the absolute base URL used for the logo + footer link in email
+ * HTML. Real sends supply the env; the /admin/email-preview route uses a
+ * computed-from-request fallback so previews work out-of-the-box even
+ * when PUBLIC_BASE_URL is unset locally.
+ */
+function emailBaseUrl(): string {
+  return process.env.PUBLIC_BASE_URL?.replace(/\/$/, '') ??
+    'https://clients.intensivetherapyretreat.com';
+}
+
+/**
+ * Wrap a body fragment (typically `<p>` tags) in the framed ITR email
+ * shell: dark top bar with logo, cream content card, dark bottom bar
+ * with footer. Uses table-based layout so it renders consistently in
+ * Outlook / Gmail / Apple Mail / mobile webviews.
+ */
+export function wrapEmailHtml(
+  inner: string,
+  opts?: { preheader?: string | undefined; baseUrl?: string | undefined },
+): string {
+  const base = (opts?.baseUrl ?? emailBaseUrl()).replace(/\/$/, '');
+  const logoUrl = `${base}/static/brand/logo.png`;
+  const preheader = opts?.preheader ?? '';
+  const year = new Date().getUTCFullYear();
+  const td = (style: string, content: string): string =>
+    `<td style="${style}">${content}</td>`;
+
+  // Preheader text: invisible inbox-preview line. Hidden via the canonical
+  // mso-hide + display:none trick so it shows in the inbox preview pane
+  // but doesn't render inside the open message.
+  const preheaderHtml = preheader
+    ? `<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:${EMAIL_BRAND.contentBg};">${esc(
+        preheader,
+      )}</div>`
+    : '';
+
+  return [
+    `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Intensive Therapy Retreats</title></head>`,
+    `<body style="margin:0;padding:0;background:${EMAIL_BRAND.pageBg};font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:${EMAIL_BRAND.contentText};">`,
+    preheaderHtml,
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${EMAIL_BRAND.pageBg};padding:24px 12px;">`,
+    `<tr>`,
+    td(
+      'text-align:center;',
+      [
+        `<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:${EMAIL_BRAND.contentBg};border-radius:8px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,0.04);">`,
+        `<tr>`,
+        td(
+          `background:${EMAIL_BRAND.frame};padding:20px 28px;text-align:left;`,
+          `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>` +
+            td(
+              'vertical-align:middle;',
+              `<img src="${esc(logoUrl)}" alt="Intensive Therapy Retreats" width="40" height="40" style="display:inline-block;vertical-align:middle;border:0;outline:none;text-decoration:none;height:40px;width:40px;" />`,
+            ) +
+            td(
+              `padding-left:12px;vertical-align:middle;font-size:16px;font-weight:600;letter-spacing:0.02em;color:${EMAIL_BRAND.frameText};`,
+              'Intensive Therapy Retreats',
+            ) +
+            `</tr></table>`,
+        ),
+        `</tr>`,
+        `<tr>`,
+        td(
+          `padding:32px 32px 24px 32px;text-align:left;color:${EMAIL_BRAND.contentText};font-size:15px;line-height:1.55;`,
+          inner,
+        ),
+        `</tr>`,
+        `<tr>`,
+        td(
+          `background:${EMAIL_BRAND.frame};padding:16px 28px;text-align:left;color:${EMAIL_BRAND.frameText};font-size:12px;line-height:1.5;`,
+          `<div>Intensive Therapy Retreats &middot; Northampton, MA</div>` +
+            `<div style="margin-top:4px;opacity:0.85;">This is an automated message from the ITR Clients system. &copy; ${year}</div>`,
+        ),
+        `</tr>`,
+        `</table>`,
+      ].join(''),
+    ),
+    `</tr>`,
+    `</table>`,
+    `</body></html>`,
+  ].join('');
+}
+
+/**
+ * Style a body link consistently with the brand palette. Used in the
+ * per-event htmlBody fragments so plain-text-style anchors don't appear
+ * blue-on-cream in Gmail.
+ */
+function emailLink(href: string): string {
+  return `<a href="${esc(href)}" style="color:${EMAIL_BRAND.link};text-decoration:underline;">${esc(href)}</a>`;
+}
+
+/**
  * Build the subject + text + html body for a notify event WITHOUT sending.
  * Exposed so the admin /admin/email-preview route can render the same
  * output a real send would, using fake-but-shaped sample inputs.
@@ -99,6 +209,7 @@ export function composeNotification(args: NotifyArgs): Composed {
 
 function compose(args: NotifyArgs): Composed {
   const link = args.event === 'consent_package_sent' ? args.clientPortalUrl : args.adminUrl;
+  const linkHtml = emailLink(link);
   // Append retreat-id tail to internal subjects so an admin scanning their
   // inbox can correlate "this alert is about which retreat?" without
   // opening the body. retreatId is an opaque uuid - NOT PHI - so this
@@ -106,86 +217,104 @@ function compose(args: NotifyArgs): Composed {
   // client-facing consent_package_sent event so the client doesn't see
   // an internal id appended to their personal email.
   const tag = `[ret #${args.retreatId.slice(0, 8)}]`;
+  let raw: { subject: string; textBody: string; htmlInner: string; templateName: string; preheader?: string };
   switch (args.event) {
     case 'consent_package_sent':
-      return {
+      raw = {
         subject: 'Your Intensive Therapy Retreats consent package',
+        preheader: 'Your therapist has prepared your consent package. Sign at the link inside.',
         textBody:
           `Hi ${args.clientFirstName},\n\n` +
           `Your therapist has prepared your consent package. Please review and sign at the link below - it is unique to you.\n\n` +
           `${link}\n\n` +
           `If you have questions, reply to this email and our team will be in touch.\n`,
-        htmlBody:
-          `<p>Hi ${esc(args.clientFirstName)},</p>` +
-          `<p>Your therapist has prepared your consent package. Please review and sign at the link below - it is unique to you.</p>` +
-          `<p><a href="${esc(link)}">${esc(link)}</a></p>` +
-          `<p>If you have questions, reply to this email and our team will be in touch.</p>`,
+        htmlInner:
+          `<p style="margin:0 0 14px 0;">Hi ${esc(args.clientFirstName)},</p>` +
+          `<p style="margin:0 0 14px 0;">Your therapist has prepared your consent package. Please review and sign at the link below — it is unique to you.</p>` +
+          `<p style="margin:0 0 14px 0;">${linkHtml}</p>` +
+          `<p style="margin:0;">If you have questions, reply to this email and our team will be in touch.</p>`,
         templateName: 'consent_package_sent',
       };
+      break;
     case 'consents_signed':
-      return {
+      raw = {
         subject: `Consents signed ${tag}`,
         textBody: `All required consents have been signed. ${link}\n`,
-        htmlBody: `<p>All required consents have been signed.</p><p><a href="${esc(link)}">${esc(link)}</a></p>`,
+        htmlInner: `<p style="margin:0 0 14px 0;">All required consents have been signed.</p><p style="margin:0;">${linkHtml}</p>`,
         templateName: 'consents_signed',
       };
+      break;
     case 'deposit_paid':
-      return {
+      raw = {
         subject: `Deposit paid - please confirm dates ${tag}`,
         textBody: `Deposit paid. Please confirm dates: ${link}\n`,
-        htmlBody: `<p>Deposit paid. Please confirm dates.</p><p><a href="${esc(link)}">${esc(link)}</a></p>`,
+        htmlInner: `<p style="margin:0 0 14px 0;">Deposit paid. Please confirm dates.</p><p style="margin:0;">${linkHtml}</p>`,
         templateName: 'deposit_paid',
       };
+      break;
     case 'dates_confirmed':
-      return {
+      raw = {
         subject: `Retreat dates confirmed ${tag}`,
         textBody: `Retreat dates have been confirmed. ${link}\n`,
-        htmlBody: `<p>Retreat dates have been confirmed.</p><p><a href="${esc(link)}">${esc(link)}</a></p>`,
+        htmlInner: `<p style="margin:0 0 14px 0;">Retreat dates have been confirmed.</p><p style="margin:0;">${linkHtml}</p>`,
         templateName: 'dates_confirmed',
       };
+      break;
     case 'in_progress':
-      return {
+      raw = {
         subject: `Retreat in progress ${tag}`,
         textBody: `Retreat marked in progress. ${link}\n`,
-        htmlBody: `<p>Retreat marked in progress.</p><p><a href="${esc(link)}">${esc(link)}</a></p>`,
+        htmlInner: `<p style="margin:0 0 14px 0;">Retreat marked in progress.</p><p style="margin:0;">${linkHtml}</p>`,
         templateName: 'in_progress',
       };
+      break;
     case 'completion_submitted':
-      return {
+      raw = {
         subject: `Retreat completion submitted ${tag}`,
         textBody: `Therapist submitted completion form. ${link}\n`,
-        htmlBody: `<p>Therapist submitted completion form.</p><p><a href="${esc(link)}">${esc(link)}</a></p>`,
+        htmlInner: `<p style="margin:0 0 14px 0;">Therapist submitted completion form.</p><p style="margin:0;">${linkHtml}</p>`,
         templateName: 'completion_submitted',
       };
+      break;
     case 'final_charged':
-      return {
+      raw = {
         subject: `Final balance charged ${tag}`,
         textBody: `Final balance charged successfully. ${link}\n`,
-        htmlBody: `<p>Final balance charged successfully.</p><p><a href="${esc(link)}">${esc(link)}</a></p>`,
+        htmlInner: `<p style="margin:0 0 14px 0;">Final balance charged successfully.</p><p style="margin:0;">${linkHtml}</p>`,
         templateName: 'final_charged',
       };
+      break;
     case 'final_charge_failed':
-      return {
+      raw = {
         subject: `Action needed: final charge failed ${tag}`,
         textBody: `Final charge failed for a retreat. Action needed: ${link}\n`,
-        htmlBody: `<p>Final charge failed for a retreat. Action needed.</p><p><a href="${esc(link)}">${esc(link)}</a></p>`,
+        htmlInner: `<p style="margin:0 0 14px 0;">Final charge failed for a retreat. Action needed.</p><p style="margin:0;">${linkHtml}</p>`,
         templateName: 'final_charge_failed',
       };
+      break;
     case 'final_charge_retry_exhausted':
-      return {
+      raw = {
         subject: `Action needed: final charge retry attempts exhausted ${tag}`,
         textBody: `All retry attempts for the final charge have failed (3/3). Manual recovery required: ${link}\n`,
-        htmlBody: `<p>All retry attempts for the final charge have failed (3/3). Manual recovery required.</p><p><a href="${esc(link)}">${esc(link)}</a></p>`,
+        htmlInner: `<p style="margin:0 0 14px 0;">All retry attempts for the final charge have failed (3/3). Manual recovery required.</p><p style="margin:0;">${linkHtml}</p>`,
         templateName: 'final_charge_retry_exhausted',
       };
+      break;
     case 'cancelled':
-      return {
+      raw = {
         subject: `Retreat cancelled ${tag}`,
         textBody: `Retreat cancelled. ${link}\n`,
-        htmlBody: `<p>Retreat cancelled.</p><p><a href="${esc(link)}">${esc(link)}</a></p>`,
+        htmlInner: `<p style="margin:0 0 14px 0;">Retreat cancelled.</p><p style="margin:0;">${linkHtml}</p>`,
         templateName: 'cancelled',
       };
+      break;
   }
+  return {
+    subject: raw.subject,
+    textBody: raw.textBody,
+    htmlBody: wrapEmailHtml(raw.htmlInner, { preheader: raw.preheader }),
+    templateName: raw.templateName,
+  };
 }
 
 export async function notify(args: NotifyArgs): Promise<void> {
