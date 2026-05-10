@@ -27,6 +27,7 @@ import {
   Label,
   Layout,
   PageHeader,
+  Select,
   Table,
   Tbody,
   Td,
@@ -34,6 +35,9 @@ import {
   Thead,
   Tr,
 } from '../../lib/ui/index.js';
+
+type TherapistRole = 'admin' | 'therapist';
+const ROLES: readonly TherapistRole[] = ['admin', 'therapist'];
 
 export const adminPricingRoute = new Hono();
 
@@ -43,6 +47,9 @@ type Row = {
   role: string;
   fullDay: number;
   halfDay: number | null;
+  kairEligible: boolean;
+  kairFullDay: number | null;
+  kairHalfDay: number | null;
   active: boolean;
   locationName: string | null;
   connectAccountId: string | null;
@@ -63,6 +70,9 @@ adminPricingRoute.get('/', async (c) => {
       role: therapists.role,
       fullDay: therapists.defaultFullDayCents,
       halfDay: therapists.defaultHalfDayCents,
+      kairEligible: therapists.kairEligible,
+      kairFullDay: therapists.kairFullDayCents,
+      kairHalfDay: therapists.kairHalfDayCents,
       active: therapists.active,
       locationName: locations.name,
       connectAccountId: therapists.stripeConnectAccountId,
@@ -118,6 +128,8 @@ adminPricingRoute.get('/', async (c) => {
                   <Th>Location</Th>
                   <Th class="text-right">Full day ($)</Th>
                   <Th class="text-right">Half day ($)</Th>
+                  <Th class="text-right">KAIR Full ($)</Th>
+                  <Th class="text-right">KAIR Half ($)</Th>
                   <Th class="text-right">Payout %</Th>
                   <Th>Connect</Th>
                   <Th>Active</Th>
@@ -128,7 +140,19 @@ adminPricingRoute.get('/', async (c) => {
                 {(rows as Row[]).map((t) => (
                   <Tr>
                     <Td class="font-medium">{t.fullName}</Td>
-                    <Td class="text-muted-foreground text-sm">{t.role}</Td>
+                    <Td>
+                      <Select
+                        form={`t-${t.slug}`}
+                        name="role"
+                        class="w-32 inline-block"
+                      >
+                        {ROLES.map((r) => (
+                          <option value={r} selected={r === t.role}>
+                            {r}
+                          </option>
+                        ))}
+                      </Select>
+                    </Td>
                     <Td class="text-sm">{t.locationName ?? '-'}</Td>
                     <Td class="text-right">
                       <Input
@@ -150,6 +174,30 @@ adminPricingRoute.get('/', async (c) => {
                         min="0"
                         step="0.01"
                         value={t.halfDay == null ? '' : (t.halfDay / 100).toFixed(2)}
+                        placeholder="-"
+                        class="w-28 text-right inline-block"
+                      />
+                    </Td>
+                    <Td class="text-right">
+                      <Input
+                        form={`t-${t.slug}`}
+                        name="kair_full_day_dollars"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={t.kairFullDay == null ? '' : (t.kairFullDay / 100).toFixed(2)}
+                        placeholder="-"
+                        class="w-28 text-right inline-block"
+                      />
+                    </Td>
+                    <Td class="text-right">
+                      <Input
+                        form={`t-${t.slug}`}
+                        name="kair_half_day_dollars"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={t.kairHalfDay == null ? '' : (t.kairHalfDay / 100).toFixed(2)}
                         placeholder="-"
                         class="w-28 text-right inline-block"
                       />
@@ -270,12 +318,50 @@ adminPricingRoute.post('/therapist', async (c) => {
     return c.json({ error: 'invalid_payout_pct' }, 400);
   }
 
+  const roleRaw = String(form.get('role') ?? '').trim();
+  if (!ROLES.includes(roleRaw as TherapistRole)) {
+    return c.json({ error: 'invalid_role' }, 400);
+  }
+  const role = roleRaw as TherapistRole;
+
+  const parseOptionalDollars = (
+    raw: string,
+    field: 'kair_full_day' | 'kair_half_day',
+  ): { ok: true; cents: number | null } | { ok: false; error: string } => {
+    if (raw.length === 0) return { ok: true, cents: null };
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0 || n > 10_000) {
+      return { ok: false, error: `invalid_${field}` };
+    }
+    return { ok: true, cents: Math.round(n * 100) };
+  };
+
+  const kairFullRes = parseOptionalDollars(
+    String(form.get('kair_full_day_dollars') ?? '').trim(),
+    'kair_full_day',
+  );
+  if (!kairFullRes.ok) return c.json({ error: kairFullRes.error }, 400);
+  const kairHalfRes = parseOptionalDollars(
+    String(form.get('kair_half_day_dollars') ?? '').trim(),
+    'kair_half_day',
+  );
+  if (!kairHalfRes.ok) return c.json({ error: kairHalfRes.error }, 400);
+
+  // KAIR-eligible iff both KAIR rates are populated. Server-side mirrors
+  // the runtime invariant in the v0.23.0 schema comment.
+  const kairEligible =
+    kairFullRes.cents !== null && kairHalfRes.cents !== null;
+
   const { db } = await getDb();
   const result = await db
     .update(therapists)
     .set({
+      role,
       defaultFullDayCents: fullDayCents,
       defaultHalfDayCents: halfDayCents,
+      kairEligible,
+      kairFullDayCents: kairFullRes.cents,
+      kairHalfDayCents: kairHalfRes.cents,
       therapistPayoutPct: payoutPct.toFixed(2),
     })
     .where(eq(therapists.slug, slug))
@@ -287,8 +373,12 @@ adminPricingRoute.post('/therapist', async (c) => {
 
   log.info('therapist_rates_updated', {
     slug,
+    role,
     fullDayCents,
     halfDayCents,
+    kairFullDayCents: kairFullRes.cents,
+    kairHalfDayCents: kairHalfRes.cents,
+    kairEligible,
     payoutPct,
     updatedByEmail: user.email ?? null,
   });
