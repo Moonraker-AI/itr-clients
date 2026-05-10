@@ -1,5 +1,5 @@
 /**
- * /admin/bulk — bulk actions over a checkbox-selected set of retreats
+ * /admin/bulk - bulk actions over a checkbox-selected set of retreats
  * (P3 #3, v0.16.0).
  *
  * Two actions for now:
@@ -13,7 +13,7 @@
  *
  * Therapist scoping: each id is checked against `therapistCanAccess`
  * and skipped if the current user can't access it. We never error or
- * leak existence of inaccessible ids — a non-admin therapist trying to
+ * leak existence of inaccessible ids - a non-admin therapist trying to
  * bulk-cancel another therapist's retreats just gets `0 ok, N skipped`.
  *
  * Cap: 25 ids per request. Beyond that the per-request budget on Cloud

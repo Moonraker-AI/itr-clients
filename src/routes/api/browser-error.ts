@@ -1,5 +1,5 @@
 /**
- * POST /api/browser-error — vanilla browser error sink (v0.28.0).
+ * POST /api/browser-error - vanilla browser error sink (v0.28.0).
  *
  * Receives uncaught errors + unhandled rejections from the small JS
  * bundle in src/assets/js-bundles/browser-error-entry.js. Logs each as

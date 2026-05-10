@@ -9,7 +9,7 @@
  *     that may sit downstream of stdout.
  *
  * Strategy: deep-clone any object passed to log(), then walk it and replace
- * values that match PHI-shaped patterns. Keys are NOT used as a hint —
+ * values that match PHI-shaped patterns. Keys are NOT used as a hint -
  * pattern-matching the value is more robust to renamed fields.
  *
  * Patterns scrubbed:
@@ -48,14 +48,14 @@ const MAX_FREE_TEXT = 120;
 
 function scrubString(s: string): string {
   if (s.length === 0) return s;
-  // Always allow opaque ids + ISO timestamps through unchanged — they
+  // Always allow opaque ids + ISO timestamps through unchanged - they
   // are structural metadata and DO NOT match PHI regex anyway.
   if (UUID_RE.test(s)) return s;
   if (ISO_DATETIME_RE.test(s)) return s;
   if (ISO_DATE_RE.test(s)) return s;
 
   // Stack traces and URLs still get PHI regex applied (M9 fix #12 + #13)
-  // — earlier behavior whitelisted URLs entirely, which let `?email=…`
+  // - earlier behavior whitelisted URLs entirely, which let `?email=…`
   // query-strings or stack frames containing PHI through. We skip only
   // the free-text length truncation for them so debugging info survives.
   const isStructural = URL_RE.test(s) || STACK_RE.test(s);
@@ -101,7 +101,7 @@ export function redact(value: unknown, depth = 0): unknown {
 }
 
 /**
- * Structured log entry. Goes to stdout as a single JSON line — Cloud Logging
+ * Structured log entry. Goes to stdout as a single JSON line - Cloud Logging
  * picks up `severity`, `message`, and any other fields automatically.
  *
  * Trace correlation (audit nit): when an inbound request had an

@@ -1,11 +1,11 @@
 /**
- * /api/cron/scan-bounces — Cloud Scheduler target (P1 #10, docs/bounce-tracking.md).
+ * /api/cron/scan-bounces - Cloud Scheduler target (P1 #10, docs/bounce-tracking.md).
  *
  * Pulls Delivery Status Notifications (RFC 3464) from the sending mailbox via
  * Gmail API, parses each, and updates the matching email_log row to
  * status='bounced' with the parsed Diagnostic-Code as bounce_reason.
  *
- * Auth model: same as the other cron routes — OIDC at the GFE plus an optional
+ * Auth model: same as the other cron routes - OIDC at the GFE plus an optional
  * `X-Cron-Secret` defense-in-depth header.
  *
  * Cadence: 30 min. Bounces typically arrive within minutes of the original
@@ -18,7 +18,7 @@
  * Match strategy: DSN `In-Reply-To` (or, fallback, the Message-ID extracted
  * from the embedded `message/rfc822` part) is matched against
  * email_log.message_id. Older rows whose message_id was the Gmail internal id
- * (pre-0007 migration) will not match — that is by design; we cannot retro-
+ * (pre-0007 migration) will not match - that is by design; we cannot retro-
  * actively learn what RFC Message-ID Gmail assigned to those sends.
  */
 
@@ -48,7 +48,7 @@ cronScanBouncesRoute.post('/scan-bounces', async (c) => {
   } catch (err) {
     // Single grep-able log line for the cron_scan_bounces_failed monitoring
     // metric. Most likely cause is a missing gmail.readonly DWD scope or a
-    // Gmail API quota event — both block bounce visibility for ops, so the
+    // Gmail API quota event - both block bounce visibility for ops, so the
     // alert wakes someone up after sustained failures.
     log.error('cron_scan_bounces_failed', {
       since: since.toISOString(),
@@ -68,7 +68,7 @@ cronScanBouncesRoute.post('/scan-bounces', async (c) => {
       continue;
     }
 
-    // Only treat 5.x.x as a hard bounce. 4.x.x is transient — the sending MTA
+    // Only treat 5.x.x as a hard bounce. 4.x.x is transient - the sending MTA
     // will retry; we don't want to pollute email_log with status='bounced'
     // for a deferral that may still deliver. If statusCode is missing,
     // assume hard (more conservative for ops alerting).

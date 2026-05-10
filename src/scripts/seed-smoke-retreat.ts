@@ -1,5 +1,5 @@
 /**
- * Smoke retreat seeder — creates a fresh test client + retreat in the
+ * Smoke retreat seeder - creates a fresh test client + retreat in the
  * connected DB and prints the public client URL for browser walkthrough.
  *
  * Each run creates a NEW client (timestamped email) so re-running gives a
@@ -15,7 +15,7 @@
  * The Cloud Run Job (`itr-smoke-seed`) is deployed by the standard
  * cloudbuild.yaml on every push to main / tag, mirroring the
  * itr-migrate Job pattern. The Job is NOT auto-executed by Cloud
- * Build — fire it manually via the helper script above when needed.
+ * Build - fire it manually via the helper script above when needed.
  */
 
 import { asc, eq } from 'drizzle-orm';

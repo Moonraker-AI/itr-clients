@@ -1,7 +1,7 @@
 /**
- * /api/cron/weekly-digest — weekly per-client nudges + admin rollup
+ * /api/cron/weekly-digest - weekly per-client nudges + admin rollup
  * (P3, v0.22.0). Fired by Cloud Scheduler on a weekly cadence (Sunday
- * 7am ET — see scripts/m22-create-weekly-digest-scheduler.sh).
+ * 7am ET - see scripts/m22-create-weekly-digest-scheduler.sh).
  *
  * Two phases:
  *   1. **Per-client reminders.** For every retreat in `awaiting_consents`
@@ -244,7 +244,7 @@ cronWeeklyDigestRoute.post('/weekly-digest', async (c) => {
     : stuck
         .map(
           (s) =>
-            `  - ${s.state}: ${s.clientFirstName} ${s.clientLastName} (therapist ${s.therapistFullName}) — last touch ${s.updatedAt.toISOString().slice(0, 10)} → ${adminUrlForRetreat(s.retreatId)}`,
+            `  - ${s.state}: ${s.clientFirstName} ${s.clientLastName} (therapist ${s.therapistFullName}) - last touch ${s.updatedAt.toISOString().slice(0, 10)} → ${adminUrlForRetreat(s.retreatId)}`,
         )
         .join('\n');
   const failuresList = failedPayments.length === 0

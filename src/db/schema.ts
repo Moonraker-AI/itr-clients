@@ -157,7 +157,7 @@ export const pricingConfig = pgTable('pricing_config', {
 });
 
 /**
- * Clients. PHI-heavy table — every PHI-flagged column stays out of logs
+ * Clients. PHI-heavy table - every PHI-flagged column stays out of logs
  * (phi-redactor.ts) and out of Stripe (DESIGN.md §16).
  */
 export const clients = pgTable('clients', {
@@ -174,7 +174,7 @@ export const clients = pgTable('clients', {
   emergencyContactPhone: text('emergency_contact_phone'),
   // Used for therapist-licensure jurisdiction checks (DESIGN §14 open Q).
   stateOfResidence: text('state_of_residence'),
-  // PHI, therapist-only. Free-text — redactor will truncate >120 chars in logs.
+  // PHI, therapist-only. Free-text - redactor will truncate >120 chars in logs.
   notes: text('notes'),
   createdByTherapistId: uuid('created_by_therapist_id')
     .notNull()
@@ -188,14 +188,14 @@ export const clients = pgTable('clients', {
 });
 
 /**
- * Retreats — the spine of the system. State transitions go through
+ * Retreats - the spine of the system. State transitions go through
  * src/lib/state-machine.ts; nothing else mutates `state`. Pricing is
- * snapshotted at creation (DESIGN §4) — never join to live pricing_config
+ * snapshotted at creation (DESIGN §4) - never join to live pricing_config
  * when computing a retreat's totals.
  *
  * `updated_at` semantics (audit #41): bumped only on retreat-row mutations
  * (state transitions, day-count submissions, schedule edits). It is NOT
- * the freshest timestamp for the retreat as a whole — `payments.updated_at`
+ * the freshest timestamp for the retreat as a whole - `payments.updated_at`
  * for the same retreat advances independently on every Stripe attempt
  * (deposit/final/refund retries). Treat them as two parallel timelines:
  * `retreats.updated_at` for state mutations, `payments.updated_at` for
@@ -275,7 +275,7 @@ export const consentTemplates = pgTable(
     version: integer('version').notNull(),
     bodyMarkdown: text('body_markdown').notNull(),
     /**
-     * Schema for evidence_blob captured during signing — array of
+     * Schema for evidence_blob captured during signing - array of
      * { key, label, kind: 'checkbox'|'text'|'choice'|'longtext'|'date',
      *   required?: boolean, options?: string[] }
      */
@@ -370,7 +370,7 @@ export const auditEvents = pgTable('audit_events', {
 });
 
 /**
- * email_log — outbound notification audit trail.
+ * email_log - outbound notification audit trail.
  *
  * PHI flag (audit #29): `recipient` is PHI when `retreat_id` is non-null,
  * because the join exposes which client / therapist a given email address
@@ -379,11 +379,11 @@ export const auditEvents = pgTable('audit_events', {
  * notifications to team@itr) are non-PHI and may be exported as-is.
  *
  * Status semantics:
- *   sent       — gmail.send() returned a messageId; message_id is set
- *   delivered  — webhook/poll confirmed delivery (not currently emitted)
- *   bounced    — DSN matched against message_id; bounced_at + bounce_reason set
- *   complained — spam-flagged (not currently emitted)
- *   failed     — send raised; message_id is null (audit #28)
+ *   sent       - gmail.send() returned a messageId; message_id is set
+ *   delivered  - webhook/poll confirmed delivery (not currently emitted)
+ *   bounced    - DSN matched against message_id; bounced_at + bounce_reason set
+ *   complained - spam-flagged (not currently emitted)
+ *   failed     - send raised; message_id is null (audit #28)
  *
  * message_id is the RFC 5322 Message-ID header we generate at send time and
  * pass to Gmail in the raw payload. The cron-scan-bounces job parses inbound
@@ -454,7 +454,7 @@ export const stripeCustomers = pgTable('stripe_customers', {
  * (unique) so duplicate webhooks don't double-write.
  *
  * `updated_at` semantics (audit #41): bumped on every status flip and on
- * every retry — so it can advance well past `retreats.updated_at` for the
+ * every retry - so it can advance well past `retreats.updated_at` for the
  * same retreat (e.g. a retry cron run that doesn't transition the retreat).
  * See the retreats comment block for the parallel-timelines rule.
  */

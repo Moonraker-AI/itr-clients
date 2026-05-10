@@ -1,5 +1,5 @@
 /**
- * Consent PDF renderer (DESIGN.md §11 — `pdf.ts`).
+ * Consent PDF renderer (DESIGN.md §11 - `pdf.ts`).
  *
  * Pipeline:
  *   1. `renderTemplate()` resolves a versioned consent body with vars
@@ -12,7 +12,7 @@
  * The signature image (data URL captured client-side) and the intake
  * answers are stamped onto a final page so the rendered PDF is a
  * self-contained record. The signature image is ALSO stored separately
- * in GCS via `lib/storage.ts` for evidence purposes — DESIGN §7 calls
+ * in GCS via `lib/storage.ts` for evidence purposes - DESIGN §7 calls
  * for signed-PDF + raw-evidence redundancy.
  *
  * Markdown subset is intentionally narrow. Anything richer (tables,
@@ -161,7 +161,7 @@ function tokensToReactPdf(tokens: Token[]): React.ReactNode[] {
       case 'space':
         break;
       default:
-        // Unsupported block — emit raw text rather than dropping silently.
+        // Unsupported block - emit raw text rather than dropping silently.
         if ('raw' in tok && typeof (tok as { raw: unknown }).raw === 'string') {
           out.push(
             e(Text, { key: i, style: styles.paragraph }, (tok as { raw: string }).raw),
@@ -207,7 +207,7 @@ export interface SignatureBlock {
 
 export interface IntakeAnswer {
   field: RequiredField;
-  /** Display value — always already-stringified for the PDF stamp. */
+  /** Display value - always already-stringified for the PDF stamp. */
   value: string;
 }
 
@@ -218,7 +218,7 @@ export interface RenderConsentPdfInput {
   signature?: SignatureBlock;
   /** Stamped onto the final page in field order. */
   intakeAnswers?: IntakeAnswer[];
-  /** "ITR Client HQ — informed-consent v1" header line. */
+  /** "ITR Client HQ - informed-consent v1" header line. */
   brandLine?: string;
 }
 
@@ -234,7 +234,7 @@ export async function renderConsentPdf(
 
   const headerLine =
     input.brandLine ??
-    `Intensive Therapy Retreats — ${rendered.meta.title} v${rendered.meta.version}`;
+    `Intensive Therapy Retreats - ${rendered.meta.title} v${rendered.meta.version}`;
 
   const docProps = { title: rendered.meta.title } as const;
 
@@ -276,13 +276,13 @@ function signaturePage(
   return e(
     View,
     { key: 'sig', style: styles.signaturePage },
-    e(Text, { style: styles.h2 }, `Signature & Intake — ${meta.title}`),
+    e(Text, { style: styles.h2 }, `Signature & Intake - ${meta.title}`),
     ...intake.map((a, idx) =>
       e(
         View,
         { key: `intake-${idx}`, style: styles.intakeRow },
         e(Text, { style: styles.intakeLabel }, `${a.field.label}:`),
-        e(Text, { style: styles.intakeValue }, a.value || '—'),
+        e(Text, { style: styles.intakeValue }, a.value || '-'),
       ),
     ),
     sig

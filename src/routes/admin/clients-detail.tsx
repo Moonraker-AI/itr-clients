@@ -187,7 +187,7 @@ adminClientsDetailRoute.get('/:id', async (c) => {
     .from(payouts)
     .where(eq(payouts.retreatId, id))
     .orderBy(desc(payouts.createdAt));
-  // Orphans (payment_id IS NULL — race between transfer.created and our
+  // Orphans (payment_id IS NULL - race between transfer.created and our
   // payments insert) are visible on /admin/payouts; not surfaced here to
   // keep the card focused on the per-payment correlation.
   const payoutsByPaymentId = new Map<string, typeof payoutRows>();
@@ -564,7 +564,7 @@ adminClientsDetailRoute.get('/:id', async (c) => {
                               </a>
                             ) : (
                               <code class="font-mono text-xs text-muted-foreground">
-                                {p.stripePaymentIntentId ?? '—'}
+                                {p.stripePaymentIntentId ?? '-'}
                               </code>
                             )}
                           </Td>
@@ -597,7 +597,7 @@ adminClientsDetailRoute.get('/:id', async (c) => {
                                   {po.stripeTransferId} ↗
                                 </a>
                               ) : (
-                                <span class="text-xs text-muted-foreground">—</span>
+                                <span class="text-xs text-muted-foreground">-</span>
                               )}
                             </Td>
                           </Tr>,

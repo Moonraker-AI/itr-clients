@@ -8,7 +8,7 @@
  * inline) to execute.
  *
  * If you change PREPAINT_THEME, the SHA recomputes automatically at module
- * load — server.ts re-reads it on cold start.
+ * load - server.ts re-reads it on cold start.
  */
 
 import { createHash } from 'node:crypto';

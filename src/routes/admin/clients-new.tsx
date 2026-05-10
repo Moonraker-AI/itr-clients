@@ -127,7 +127,7 @@ adminClientsNewRoute.get('/', async (c) => {
             </CardContent>
           </Card>
 
-          {/* Retreat type — only relevant when the selected therapist is
+          {/* Retreat type - only relevant when the selected therapist is
               KAIR-eligible. For the self-therapist (non-admin) path, server
               renders unhidden iff their own row is kair_eligible. For the
               admin dropdown path, server renders hidden + admin-shell.js
@@ -349,7 +349,7 @@ adminClientsNewRoute.post('/', async (c) => {
   };
   // Program-aware base rates. KAIR retreats use the therapist's KAIR rates;
   // ITR uses the standard defaults. Server-side eligibility check is the
-  // authoritative one — the UI hides the option for non-eligible therapists
+  // authoritative one - the UI hides the option for non-eligible therapists
   // but a tampered form must still be rejected.
   if (program === 'kair') {
     if (!t.kairEligible) {

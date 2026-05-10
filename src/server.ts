@@ -66,7 +66,7 @@ app.use('*', async (c, next) => {
 // avoid FOUC; it is pinned by SHA-256 hash so its exact byte sequence
 // (and only that one) is allowed inline.
 // style-src keeps 'unsafe-inline' because Tailwind's utility CSS landed
-// in the external bundle — but a few inline `style="..."` attrs (chiefly
+// in the external bundle - but a few inline `style="..."` attrs (chiefly
 // on the logo `onerror` and the dynamically injected admin-shell button
 // states) are still in-tree. Tightening style-src is a follow-up.
 app.use('*', async (c, next) => {
@@ -75,7 +75,7 @@ app.use('*', async (c, next) => {
   c.header('X-Content-Type-Options', 'nosniff');
   c.header('X-Frame-Options', 'DENY');
   c.header('Referrer-Policy', 'no-referrer');
-  // CSP only on HTML responses — JSON/redirects don't need it and adding
+  // CSP only on HTML responses - JSON/redirects don't need it and adding
   // it everywhere can break unexpected client tooling.
   const ct = c.res.headers.get('content-type') ?? '';
   if (ct.includes('text/html')) {
@@ -101,7 +101,7 @@ app.use('*', async (c, next) => {
 // Note: Google Frontend reserves `/healthz` on *.run.app domains and
 // intercepts it before the container. Use `/health` as the primary.
 //
-// /health: always 200, no DB touch — survives transient DB blips.
+// /health: always 200, no DB touch - survives transient DB blips.
 // /ready: pings the DB; uptime monitors that gate traffic should use this
 //   so a DB-broken instance doesn't get marked healthy (M9 fix #22).
 const health = (c: import('hono').Context) =>
@@ -120,7 +120,7 @@ app.get('/ready', async (c) => {
 });
 
 app.get('/', (c) =>
-  c.text(`ITR Clients — ${process.env.K_REVISION ?? 'local'}\n`),
+  c.text(`ITR Clients - ${process.env.K_REVISION ?? 'local'}\n`),
 );
 
 // WEBHOOK_ONLY=1 deploys this image as the public webhook-only Cloud Run
@@ -151,7 +151,7 @@ if (!webhookOnly) {
   // a valid session cookie when AUTH_ENABLED=1, else falls through to a
   // synthetic admin user (dev / pre-rollout no-op).
   // Defense-in-depth body cap on every authenticated POST surface. Forms
-  // here are short — the largest is admin/clients-new with ~12 capped
+  // here are short - the largest is admin/clients-new with ~12 capped
   // text fields (~5 KB worst-case). 64 KB is generous and prevents
   // memory-exhaustion DoS from an authenticated bad actor or a
   // misconfigured client. Public consents / Stripe webhook bring their
@@ -193,7 +193,7 @@ if (!webhookOnly) {
   // hammering /c/<known-token>/checkout could still rack up Stripe API
   // calls. 60 req/min/IP is generous for a real client (status + multiple
   // consent pages + checkout + recovery typically tops out around 20).
-  // In-memory counter is per-Cloud-Run-instance — see lib/rate-limit.ts
+  // In-memory counter is per-Cloud-Run-instance - see lib/rate-limit.ts
   // for the trade-off (acceptable as defense-in-depth; not a hard cap).
   const publicRateLimiter = createRateLimiter({
     windowMs: 60_000,
@@ -272,7 +272,7 @@ const shutdown = (signal: string) => {
   log.info('shutdown', { signal });
   server.close(async () => {
     try {
-      // No-op today — error reports are unbuffered stdout writes that
+      // No-op today - error reports are unbuffered stdout writes that
       // Cloud Logging tails directly. Kept for symmetry with the prior
       // Sentry shutdown contract; if we ever swap to a buffered transport
       // the SIGTERM handler doesn't need to change.

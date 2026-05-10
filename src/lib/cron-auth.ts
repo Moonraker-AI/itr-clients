@@ -24,7 +24,7 @@ export function verifyCronSecret(c: Context): boolean {
     return true;
   }
   const got = c.req.header('x-cron-secret') ?? '';
-  // timingSafeEqual requires equal-length buffers — pad to the longer of
+  // timingSafeEqual requires equal-length buffers - pad to the longer of
   // the two so we leak only "wrong length" vs "wrong content", not the
   // common-prefix length.
   const a = Buffer.from(got);
