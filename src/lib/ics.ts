@@ -1,6 +1,6 @@
 /**
  * Minimal RFC-5545 VCALENDAR builder for retreat-date confirmations
- * (DESIGN.md §8 — calendar integration, M4).
+ * (DESIGN.md §8 - calendar integration, M4).
  *
  * One VEVENT, all-day, spanning startDate → endDate (inclusive).
  * In iCalendar, all-day DTEND is *exclusive*, so we add one day to
@@ -16,7 +16,7 @@ export interface BuildIcsArgs {
   uid: string;
   /** ISO date `YYYY-MM-DD` (inclusive). */
   startDate: string;
-  /** ISO date `YYYY-MM-DD` (inclusive — converted to exclusive DTEND). */
+  /** ISO date `YYYY-MM-DD` (inclusive - converted to exclusive DTEND). */
   endDate: string;
   /** PHI-free. e.g. "ITR retreat". */
   summary: string;

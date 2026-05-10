@@ -95,7 +95,7 @@ export interface Composed {
  * frozen hex snapshot and updated alongside theme bumps.
  */
 const EMAIL_BRAND = {
-  frame: '#3a5e60',          // dark teal — top + bottom bars
+  frame: '#3a5e60',          // dark teal - top + bottom bars
   frameText: '#f0ede2',      // cream-on-teal text in bars
   contentBg: '#faf9f4',      // cream content area
   contentText: '#2c3a3c',    // dark slate body text
@@ -230,7 +230,7 @@ function compose(args: NotifyArgs): Composed {
           `If you have questions, reply to this email and our team will be in touch.\n`,
         htmlInner:
           `<p style="margin:0 0 14px 0;">Hi ${esc(args.clientFirstName)},</p>` +
-          `<p style="margin:0 0 14px 0;">Your therapist has prepared your consent package. Please review and sign at the link below — it is unique to you.</p>` +
+          `<p style="margin:0 0 14px 0;">Your therapist has prepared your consent package. Please review and sign at the link below - it is unique to you.</p>` +
           `<p style="margin:0 0 14px 0;">${linkHtml}</p>` +
           `<p style="margin:0;">If you have questions, reply to this email and our team will be in touch.</p>`,
         templateName: 'consent_package_sent',

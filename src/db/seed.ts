@@ -8,7 +8,7 @@
  * Run locally against dev (with cloud-sql-proxy + LOCAL_DB_URL):
  *   npm run db:seed
  *
- * Safe to re-run — every upsert keys on a stable slug/id/(event,email).
+ * Safe to re-run - every upsert keys on a stable slug/id/(event,email).
  */
 
 import { sql } from 'drizzle-orm';
@@ -128,7 +128,7 @@ const THERAPISTS: TherapistSeed[] = [
     locationSlug: 'northampton-ma',
     fullDayCents: 240_000,
     halfDayCents: null,
-    // No stripeConnectAccountId — Ross is paid directly outside the
+    // No stripeConnectAccountId - Ross is paid directly outside the
     // Connect pipeline. Charges fall back to the legacy direct-charge
     // flow on his retreats. Same applies to Chris (platform owner).
   },
@@ -209,7 +209,7 @@ async function main() {
       .onConflictDoNothing({ target: pricingConfig.id });
 
     // Notification recipients (DESIGN §8). The shared inbox gets every
-    // event. Per-therapist notifications are NOT seeded here — they are
+    // event. Per-therapist notifications are NOT seeded here - they are
     // resolved at send time in `notify()` via retreat.therapist_id, so
     // each therapist only sees their own retreats' events. (M2 originally
     // seeded a row per therapist per action-required event; that caused

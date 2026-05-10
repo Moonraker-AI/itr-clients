@@ -1,5 +1,5 @@
 /**
- * Retreat state machine — the spine of the system (DESIGN.md §5).
+ * Retreat state machine - the spine of the system (DESIGN.md §5).
  *
  * Every state mutation MUST go through a transition function in this module.
  * Each transition validates the source state, performs side effects, writes
@@ -112,7 +112,7 @@ function actorToColumns(a: Actor): { actorType: 'therapist' | 'client' | 'system
  * Public host for token-bearing client URLs.
  *
  * Production: PUBLIC_BASE_URL must be bound. Without it, every notify
- * email links to the dev *.run.app origin even from prod — bad for
+ * email links to the dev *.run.app origin even from prod - bad for
  * client-facing URLs (M9 fix #45).
  *
  * Dev / non-prod: falls back to the dev *.run.app origin.
@@ -121,7 +121,7 @@ function publicBaseUrl(): string {
   const url = process.env.PUBLIC_BASE_URL;
   if (url) return url;
   if (process.env.AUTH_ENABLED === '1') {
-    // AUTH_ENABLED=1 is the prod tripwire — if we're enforcing auth,
+    // AUTH_ENABLED=1 is the prod tripwire - if we're enforcing auth,
     // we should also be on a real domain.
     throw new Error(
       'PUBLIC_BASE_URL is required when AUTH_ENABLED=1',
@@ -178,7 +178,7 @@ export const transitions = {
         .from(retreatRequiredConsents)
         .where(eq(retreatRequiredConsents.retreatId, args.retreatId));
       if (required.length === 0) {
-        throw new Error('retreat has no required consents — admin form must seed them');
+        throw new Error('retreat has no required consents - admin form must seed them');
       }
 
       await tx
@@ -222,7 +222,7 @@ export const transitions = {
    * Re-send the consent_package_sent email without changing state. Used by
    * the bulk admin action when a client misses the original (filed in
    * spam, deleted, mailbox full at original send time, etc.). State must
-   * already be `awaiting_consents` — there is no point resending after the
+   * already be `awaiting_consents` - there is no point resending after the
    * client has signed and moved on.
    *
    * Emits a separate `consent_package_resent` audit event so the audit
@@ -395,12 +395,12 @@ export const transitions = {
    * handler on `checkout.session.completed` (deposit) or
    * `payment_intent.succeeded` for the deposit kind.
    *
-   * Idempotent on `stripePaymentIntentId` — duplicate webhook deliveries
+   * Idempotent on `stripePaymentIntentId` - duplicate webhook deliveries
    * are absorbed silently.
    *
    * NOTE: this does NOT change `retreats.state`. The state stays at
    * `awaiting_deposit` until `confirmDates` (M4) flips it to `scheduled`
-   * — the design's "scheduled" precondition is BOTH deposit paid AND
+   * - the design's "scheduled" precondition is BOTH deposit paid AND
    * dates confirmed (DESIGN §5).
    */
   async markDepositPaid(args: {
@@ -468,7 +468,7 @@ export const transitions = {
 
       // Persist the saved payment method on stripe_customers so M5's
       // off-session charge has a PM id to reference. Idempotent (overwrites
-      // with the latest value — Stripe attaches the PM at deposit time, and
+      // with the latest value - Stripe attaches the PM at deposit time, and
       // any subsequent client card update flows through the same column).
       if (args.stripePaymentMethodId) {
         await tx
@@ -506,7 +506,7 @@ export const transitions = {
    * precondition is BOTH deposit-paid AND dates-confirmed).
    *
    * Idempotent: re-POST with the same dates while already `scheduled`
-   * is a no-op. Re-POST with different dates while `scheduled` errors —
+   * is a no-op. Re-POST with different dates while `scheduled` errors -
    * date changes after confirmation are out of scope (would need an
    * explicit reschedule transition).
    */
@@ -554,7 +554,7 @@ export const transitions = {
 
       // Require an actual succeeded deposit payments row before scheduling
       // (M9 fix #14). Earlier code keyed on the `deposit_paid` audit_event,
-      // which can drift from the payments table — money is the source of
+      // which can drift from the payments table - money is the source of
       // truth, audit is just the trail.
       const [paid] = await tx
         .select({ id: payments.id })
@@ -904,7 +904,7 @@ export const transitions = {
     failureMessage: string;
     stripePaymentIntentId?: string;
     amountCents?: number;
-    /** Stripe PI client_secret — populated for `requires_action` only. */
+    /** Stripe PI client_secret - populated for `requires_action` only. */
     clientSecret?: string;
     /** Which attempt this failure represents (1 = first try, 2 = first
      *  retry, 3 = final retry). When `attempt === 3` the retry pool is
@@ -918,7 +918,7 @@ export const transitions = {
       const [r] = await tx.select().from(retreats).where(eq(retreats.id, args.retreatId));
       if (!r) throw new Error(`retreat not found: ${args.retreatId}`);
 
-      // Idempotency: already in failed state — only update the payments row
+      // Idempotency: already in failed state - only update the payments row
       // (so retry attempts get their attempt_count bumped) and skip the
       // state/audit/notify side-effects.
       const alreadyFailed = r.state === 'final_charge_failed';
@@ -1073,7 +1073,7 @@ export async function retryFailedCharge(args: {
   } finally {
     // Audit tier-9: a failed unlock leaves the session-scoped lock held
     // until the pg connection is physically closed (NOT when client.release()
-    // returns it to the pool — pool reuses the same session). A leaked
+    // returns it to the pool - pool reuses the same session). A leaked
     // lock would silently block subsequent retry runs for this retreat.
     // Log loudly so ops can drain/cycle the pool if it ever happens.
     await client
@@ -1115,7 +1115,7 @@ async function runRetry(args: {
   }
 
   // Read prior final-kind payments. Attempt cap counts only non-succeeded
-  // rows (M9 fix #16) — a succeeded row means the charge already cleared,
+  // rows (M9 fix #16) - a succeeded row means the charge already cleared,
   // so there's no reason to count it against the 3-attempt budget.
   const priorRows = await db
     .select({
@@ -1171,7 +1171,7 @@ async function runRetry(args: {
       actor: args.actor,
       failureCode: 'no_saved_payment_method',
       failureMessage:
-        'no saved payment method on stripe_customers — cannot off-session charge',
+        'no saved payment method on stripe_customers - cannot off-session charge',
       attempt,
     });
     return {

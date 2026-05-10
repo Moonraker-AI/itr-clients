@@ -15,7 +15,7 @@ import * as schema from './schema.js';
  *     mTLS-encrypted, IAM-authenticated tunnel to the instance's PRIVATE IP.
  *     CLOUD_SQL_INSTANCE + DB_URL required.
  *
- * Lazy init via getDb() — server.ts in M0 never calls this, so no pool
+ * Lazy init via getDb() - server.ts in M0 never calls this, so no pool
  * is opened until M1+ code actually queries.
  */
 
@@ -124,7 +124,7 @@ function requireEnv(name: string): string {
  *
  * `new URL(dsn)` is convenient but its TypeError attaches `input` to the
  * thrown object, which means any unhandled parse failure prints the full
- * connection string — including the password — to stderr. This wrapper
+ * connection string - including the password - to stderr. This wrapper
  * catches that and rethrows a generic error. Passwords with reserved URL
  * chars (`/`, `@`, `:`, `?`, `#`, `&`) MUST be percent-encoded in the
  * stored secret.

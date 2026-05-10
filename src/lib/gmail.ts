@@ -1,12 +1,12 @@
 /**
- * Gmail send wrapper (DESIGN.md §8 — `gmail.ts`).
+ * Gmail send wrapper (DESIGN.md §8 - `gmail.ts`).
  *
  * Uses Workspace domain-wide delegation: a Workspace SA (whose JSON key
  * is in Secret Manager as `gmail-service-account`) impersonates the
  * `clients@intensivetherapyretreat.com` mailbox to send email. The
  * Workspace BAA covers Gmail-as-sending-infra (GCP_BOOTSTRAP §2).
  *
- * Body content is intentionally PHI-free per DESIGN.md §8 — only the
+ * Body content is intentionally PHI-free per DESIGN.md §8 - only the
  * client_token-bearing link goes out; everything else stays in the
  * authenticated app.
  *
@@ -199,7 +199,7 @@ function assertNoHeaderInjection(field: string, value: string): void {
     throw new Error(`gmail: ${field} must be a string`);
   }
   if (/[\r\n]/.test(value)) {
-    throw new Error(`gmail: ${field} contains CR/LF — refused (header injection)`);
+    throw new Error(`gmail: ${field} contains CR/LF - refused (header injection)`);
   }
 }
 
@@ -457,7 +457,7 @@ export async function listBounces(args: {
 
   const gmail = google.gmail({ version: 'v1', auth });
   const sinceUnix = Math.floor(args.since.getTime() / 1000);
-  // Gmail search query — `from:mailer-daemon` covers Gmail + most MTAs;
+  // Gmail search query - `from:mailer-daemon` covers Gmail + most MTAs;
   // `OR from:postmaster` catches the rest. `after:<unix>` narrows to recent.
   const q = `(from:mailer-daemon OR from:postmaster) after:${sinceUnix}`;
   const list = await gmail.users.messages.list(

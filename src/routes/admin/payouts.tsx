@@ -1,5 +1,5 @@
 /**
- * /admin/payouts — global Stripe Connect payout ledger (Phase C, v0.26.0).
+ * /admin/payouts - global Stripe Connect payout ledger (Phase C, v0.26.0).
  *
  * One row per payouts table entry, populated by the transfer.* webhook
  * handlers in src/routes/api/webhooks-stripe.ts. Therapist scoping mirrors
@@ -284,7 +284,7 @@ adminPayoutsRoute.get('/', async (c) => {
                           {r.retreatId.slice(0, 8)}
                         </a>
                       ) : (
-                        <span class="text-xs text-muted-foreground">—</span>
+                        <span class="text-xs text-muted-foreground">-</span>
                       )}
                     </Td>
                     <Td class="text-right font-mono text-sm whitespace-nowrap">
@@ -306,7 +306,7 @@ adminPayoutsRoute.get('/', async (c) => {
                           {r.stripeTransferId.slice(0, 14)} ↗
                         </a>
                       ) : (
-                        <span class="text-xs text-muted-foreground">—</span>
+                        <span class="text-xs text-muted-foreground">-</span>
                       )}
                     </Td>
                   </Tr>

@@ -1,5 +1,5 @@
 /**
- * /api/cron/retry-failed-charges — Cloud Scheduler target (DESIGN.md §10, M6).
+ * /api/cron/retry-failed-charges - Cloud Scheduler target (DESIGN.md §10, M6).
  *
  * Behaviour:
  *   - Selects retreats with `state='final_charge_failed'`.
@@ -80,7 +80,7 @@ cronRetryFailedChargesRoute.post('/retry-failed-charges', async (c) => {
     }
     if (finalRows.length === 0) {
       // M9 fix #18: a final_charge_failed retreat without ANY payments
-      // rows is anomalous — typically pre-#15 data where the failure
+      // rows is anomalous - typically pre-#15 data where the failure
       // path skipped the row insert. Log loud so operators surface it
       // and don't let it sit silently forever.
       log.error('CRITICAL_final_charge_failed_no_payments_row', {

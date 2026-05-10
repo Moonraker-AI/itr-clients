@@ -142,7 +142,7 @@ export function estimateStripeFeeCents(grossCents: number): number {
  *
  * Model: pre-deduct estimated Stripe processing fee from the GROSS amount,
  * THEN apply the therapist's payout pct to the NET. Platform retains the
- * difference, which covers the fee Stripe deducts from platform balance —
+ * difference, which covers the fee Stripe deducts from platform balance -
  * leaving the platform's 40% net cleanly. Therapists are unaffected by fee
  * variance; platform absorbs sub-cent rounding + ±estimate deltas.
  *
@@ -225,7 +225,7 @@ function dryRun(): boolean {
 
 /**
  * Find or create the Stripe Customer for a client. Stores only non-PHI
- * billing data — name + email + a generic description (DESIGN §16).
+ * billing data - name + email + a generic description (DESIGN §16).
  */
 export interface UpsertCustomerArgs {
   clientId: string;
@@ -299,7 +299,7 @@ export interface CreateDepositSessionArgs {
   connectAccountId?: string | null;
   /**
    * Therapist's payout share (0..100). Required when `connectAccountId` is
-   * set. 100 means application_fee_amount=0 — all funds to the therapist
+   * set. 100 means application_fee_amount=0 - all funds to the therapist
    * (today only Bambi). Caller may pass either string ('80', from drizzle's
    * numeric type) or number.
    */
@@ -383,7 +383,7 @@ export async function createDepositCheckoutSession(
  * payment method (DESIGN §6 final balance flow, M5).
  *
  * Behaviour:
- *   - Synchronous attempt with `confirm: true` — the result of the call
+ *   - Synchronous attempt with `confirm: true` - the result of the call
  *     is authoritative; webhooks are a redundant ack.
  *   - Idempotent on `idempotencyKey` (callers pass `final:<retreatId>:<attempt>`).
  *   - Maps Stripe outcomes to a small enum so the state machine doesn't
@@ -398,7 +398,7 @@ export interface ChargeFinalBalanceArgs {
   retreatId: string;
   clientId: string;
   stripeCustomerId: string;
-  /** Saved PM id — usually `stripe_customers.default_payment_method_id`. */
+  /** Saved PM id - usually `stripe_customers.default_payment_method_id`. */
   paymentMethodId: string;
   amountCents: number;
   /** Idempotency key for the PaymentIntent create. */
@@ -560,7 +560,7 @@ function mapPaymentIntent(pi: Stripe.PaymentIntent): ChargeFinalBalanceResult {
 
 /**
  * Webhook signature verification. Returns the parsed Stripe event or null
- * (and logs) on a bad signature — caller should respond 400 in that case.
+ * (and logs) on a bad signature - caller should respond 400 in that case.
  */
 export function verifyWebhookSignature(args: {
   rawBody: string;
@@ -588,7 +588,7 @@ export function verifyWebhookSignature(args: {
 
 /**
  * Refund a previously-succeeded PaymentIntent (DESIGN §6 cancellation/
- * refund, M7). Idempotent on `idempotencyKey` — caller passes
+ * refund, M7). Idempotent on `idempotencyKey` - caller passes
  * `refund:<paymentIntentId>:<attempt>` so retried submissions don't
  * double-refund.
  *
@@ -599,7 +599,7 @@ export function verifyWebhookSignature(args: {
  * `duplicate | fraudulent | requested_by_customer`. We always pass
  * `requested_by_customer` (operationally accurate for retreats) and
  * record the admin's free-text reason in our payments table + audit
- * event payload — never in Stripe metadata, where free-text could be PHI.
+ * event payload - never in Stripe metadata, where free-text could be PHI.
  */
 export interface RefundPaymentArgs {
   paymentIntentId: string;
@@ -611,8 +611,8 @@ export interface RefundPaymentArgs {
   /**
    * Phase C (v0.27.0). True when the original charge used a destination
    * transfer (`transfer_data.destination` was set). Adds:
-   *   - `reverse_transfer: true`        — debits connected account back
-   *   - `refund_application_fee: true`  — refunds platform's app fee
+   *   - `reverse_transfer: true`        - debits connected account back
+   *   - `refund_application_fee: true`  - refunds platform's app fee
    *   proportionally
    * so a refund unwinds every leg of the original charge. False/legacy
    * direct-charge refunds keep the pre-Phase-C behaviour.
@@ -723,7 +723,7 @@ export async function retrievePaymentIntent(
 }
 
 /**
- * Retrieve a Checkout Session — used by the success page to confirm payment.
+ * Retrieve a Checkout Session - used by the success page to confirm payment.
  */
 export async function getCheckoutSession(
   sessionId: string,

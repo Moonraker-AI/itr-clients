@@ -5,17 +5,17 @@
  * entry whose `jsonPayload` matches the `ReportedErrorEvent` shape (or
  * whose textPayload contains a stack-trace pattern). Cloud Run already
  * pipes stdout/stderr into Cloud Logging, so a single `console.log` of
- * a JSON line is enough — no SDK, no DSN, no external vendor, no BAA.
+ * a JSON line is enough - no SDK, no DSN, no external vendor, no BAA.
  *
  * GCP's BAA already covers Cloud Logging + Cloud Error Reporting, so
  * everything that flows through here stays inside the existing HIPAA
- * perimeter. PHI redactor still runs as defense-in-depth — the BAA
+ * perimeter. PHI redactor still runs as defense-in-depth - the BAA
  * removes the legal exposure but doesn't make leaking PHI ok.
  *
  * Surface:
- *   - initErrorReporter(args)  — idempotent; sets serviceContext defaults.
- *   - captureError(err, ctx)   — log a ReportedErrorEvent. Sync.
- *   - flushErrorReporter()     — no-op (stdout is unbuffered on Cloud Run).
+ *   - initErrorReporter(args)  - idempotent; sets serviceContext defaults.
+ *   - captureError(err, ctx)   - log a ReportedErrorEvent. Sync.
+ *   - flushErrorReporter()     - no-op (stdout is unbuffered on Cloud Run).
  */
 
 import { redact } from './phi-redactor.js';
@@ -40,7 +40,7 @@ let initialised = false;
 
 /**
  * Idempotent. Captures the service + revision metadata that gets attached
- * to every reported event. Safe to call multiple times — second call is a
+ * to every reported event. Safe to call multiple times - second call is a
  * no-op.
  */
 export function initErrorReporter(args: InitArgs = {}): void {
@@ -59,7 +59,7 @@ export function initErrorReporter(args: InitArgs = {}): void {
  * what tells Cloud Error Reporting to pick this up; without it Cloud
  * Logging accepts the entry but Error Reporting won't group/alert on it.
  *
- * `message` MUST contain the stack trace as text — Error Reporting
+ * `message` MUST contain the stack trace as text - Error Reporting
  * derives the grouping signature from the top stack frame.
  */
 export function captureError(
@@ -91,7 +91,7 @@ export function captureError(
 }
 
 /**
- * No-op. Cloud Run flushes stdout on shutdown automatically — no buffer
+ * No-op. Cloud Run flushes stdout on shutdown automatically - no buffer
  * to drain. Kept as an export for symmetry with the old Sentry surface
  * + so server.ts SIGTERM handler doesn't need a conditional.
  */
@@ -103,7 +103,7 @@ function formatErrorMessage(err: unknown): string {
   if (err instanceof Error) {
     // `err.stack` contains "Name: message\n    at ..." which is exactly
     // what Cloud Error Reporting wants. The redactor still runs on the
-    // ctx fields, but stack text is left as-is — frame paths + function
+    // ctx fields, but stack text is left as-is - frame paths + function
     // names are not PHI by our boundary definition.
     return err.stack ?? `${err.name}: ${err.message}`;
   }

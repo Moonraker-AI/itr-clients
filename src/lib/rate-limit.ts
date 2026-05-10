@@ -4,7 +4,7 @@
  * NOT distributed: state is per-Cloud-Run-instance. Cloud Run autoscales
  * horizontally so a determined attacker spread across instances can exceed
  * the configured cap. Acceptable as defense-in-depth for surfaces gated
- * by a high-entropy token (the public /c/:token/* family) — the bucket
+ * by a high-entropy token (the public /c/:token/* family) - the bucket
  * cap protects against bursty bots and a misconfigured retry loop, not
  * against a coordinated cracker. Step up to Cloud Memorystore (Redis) if
  * we ever need a global counter.

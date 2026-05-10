@@ -365,7 +365,7 @@ adminDashboardRoute.get('/', async (c) => {
               </Tbody>
             </Table>
           </Card>
-          {/* Bulk action toolbar — hidden until at least one row is
+          {/* Bulk action toolbar - hidden until at least one row is
               selected. Lives BELOW the table so the table's vertical
               position doesn't shift when a checkbox is ticked. Uses
               Tailwind v4's named group + :has() variant; works in

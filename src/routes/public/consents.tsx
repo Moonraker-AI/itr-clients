@@ -235,7 +235,7 @@ publicConsentsRoute.get('/:token', async (c) => {
           </LinkButton>
           <p class="text-xs text-muted-foreground">
             If you've already replied to our recovery email, no further
-            action is needed — we'll retry automatically.
+            action is needed - we'll retry automatically.
           </p>
         </div>
       );
@@ -302,7 +302,7 @@ publicConsentsRoute.get('/:token', async (c) => {
             </CardHeader>
             <CardContent>
               <p class="text-sm text-muted-foreground mb-3">
-                Educational materials for your KAIR program. These are for reference — no
+                Educational materials for your KAIR program. These are for reference - no
                 signature required.
               </p>
               <ul class="space-y-3">
@@ -538,7 +538,7 @@ publicConsentsRoute.get('/:token/view/:templateName', async (c) => {
  * template attached to this retreat. Gated to retreats with program=kair
  * to prevent ITR clients from stumbling onto KAIR-specific content.
  * Returns 404 if the template isn't attached to this retreat or program
- * doesn't match — same content-discovery-oracle protection as /view.
+ * doesn't match - same content-discovery-oracle protection as /view.
  */
 publicConsentsRoute.get('/:token/resources/:templateName', async (c) => {
   const token = c.req.param('token');
@@ -861,7 +861,7 @@ interface UnsignedTemplate {
 /**
  * v0.24.1. Returns the named template if it's required for this retreat
  * AND not yet signed. Lets the user sign consents out of the natural
- * queue order — clicking "Information and Consent for Treatment" on
+ * queue order - clicking "Information and Consent for Treatment" on
  * the status page lands on its own signing form instead of a read-only
  * view that omits the signature pad.
  */

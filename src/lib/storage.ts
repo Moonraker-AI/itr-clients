@@ -1,9 +1,9 @@
 /**
- * Cloud Storage uploads — signed consent PDFs and signature evidence.
+ * Cloud Storage uploads - signed consent PDFs and signature evidence.
  *
  * Both prod buckets are CMEK-bound to `storage-key` (GCP_BOOTSTRAP §5);
  * uploads inherit that encryption automatically. Service account credentials
- * come from the Cloud Run runtime SA via Application Default Credentials —
+ * come from the Cloud Run runtime SA via Application Default Credentials -
  * no JSON key file needed.
  *
  * Bucket selection:
@@ -29,7 +29,7 @@ function getBucket(): Bucket {
   const instance = process.env.CLOUD_SQL_INSTANCE;
   if (!instance) {
     throw new Error(
-      'GCS_CONSENTS_BUCKET unset and CLOUD_SQL_INSTANCE missing — cannot pick consents bucket',
+      'GCS_CONSENTS_BUCKET unset and CLOUD_SQL_INSTANCE missing - cannot pick consents bucket',
     );
   }
   // CLOUD_SQL_INSTANCE format: <project>:<region>:<instance>
@@ -124,7 +124,7 @@ export function signatureObjectName(args: {
  * by the admin Detail page to let therapists/admins download signed
  * consent PDFs without exposing the bucket publicly.
  *
- * Default TTL = 5 minutes. URL is single-use-ish — anyone with the URL
+ * Default TTL = 5 minutes. URL is single-use-ish - anyone with the URL
  * before expiry can fetch the object, so the route that returns it must
  * be auth-gated and the URL itself shouldn't be logged.
  */
@@ -148,7 +148,7 @@ export async function getSignedDownloadUrl(args: {
 
 /**
  * Decodes a PNG data URL produced by an HTML5 canvas signature pad.
- * Throws if the prefix is missing or the payload is empty — never feed
+ * Throws if the prefix is missing or the payload is empty - never feed
  * unvalidated input straight into a Buffer.
  */
 export function decodeSignatureDataUrl(dataUrl: string): Buffer {

@@ -1,5 +1,5 @@
 /**
- * /admin/email-preview — render every notify-event body in the browser
+ * /admin/email-preview - render every notify-event body in the browser
  * (P3, v0.20.0). Lets ops sanity-check the wording / link shape of an
  * outbound email without firing it for real.
  *
@@ -78,7 +78,7 @@ adminEmailPreviewRoute.get('/', async (c) => {
   // iframe srcdoc so the body's CSS (none today, but leaves headroom for
   // future template work) cannot bleed into the admin shell. The srcdoc
   // attribute auto-escapes when rendered as JSX prop, so we must use raw()
-  // to emit it verbatim — the body itself is operator-trusted JSX output
+  // to emit it verbatim - the body itself is operator-trusted JSX output
   // from composeNotification, never user input.
   const iframeAttr = `srcdoc="${composed.htmlBody.replace(/"/g, '&quot;')}"`;
 

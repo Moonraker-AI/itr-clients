@@ -3,7 +3,7 @@
  *
  * Templates live in `src/consents/<name>-v<version>.md` as plain markdown
  * with YAML frontmatter. Once a template version is published into the DB
- * (`consent_templates` row with `published_at` set) it is immutable —
+ * (`consent_templates` row with `published_at` set) it is immutable -
  * editing the file in-place would break in-flight retreats. Always bump
  * the version filename + add a new row.
  *
@@ -74,7 +74,7 @@ export interface LoadedTemplate {
   meta: TemplateMeta;
   /** Raw markdown body (post-frontmatter, pre-substitution). */
   body: string;
-  /** Filesystem path — useful for error messages. */
+  /** Filesystem path - useful for error messages. */
   sourcePath: string;
 }
 
@@ -211,7 +211,7 @@ export function renderTemplate(input: RenderTemplateInput): RenderedTemplate {
 
 /**
  * Idempotent: ensure every (name, version) loaded from disk exists in
- * `consent_templates`. Existing rows are NEVER modified — DESIGN.md §7
+ * `consent_templates`. Existing rows are NEVER modified - DESIGN.md §7
  * requires published versions to be immutable. New rows are inserted with
  * `published_at = now()`.
  *
@@ -228,7 +228,7 @@ export interface SyncedTemplate {
 export async function syncConsentTemplatesToDb(): Promise<
   Map<string, SyncedTemplate>
 > {
-  // Late import — keep this module DB-free for the smoke harness.
+  // Late import - keep this module DB-free for the smoke harness.
   const { getDb } = await import('../db/client.js');
   const { consentTemplates } = await import('../db/schema.js');
   const { and, eq } = await import('drizzle-orm');

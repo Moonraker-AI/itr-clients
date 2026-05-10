@@ -8,11 +8,11 @@
  * the wrapper rejects every event and we 400.
  *
  * No PHI on logs. The redactor would scrub it anyway, but we deliberately
- * never log raw event bodies — only event type + retreat_id + payment_intent
+ * never log raw event bodies - only event type + retreat_id + payment_intent
  * id resolved through metadata.
  *
  * Endpoint is publicly reachable (signature is the auth). The Cloud Run
- * service still requires IAM auth at the GFE — Stripe webhook traffic
+ * service still requires IAM auth at the GFE - Stripe webhook traffic
  * needs the service to also accept unauthenticated calls. We work around
  * this by gating *only* `/api/webhooks/stripe` via a future
  * `--allow-unauthenticated` change, OR by routing webhooks through an
@@ -220,7 +220,7 @@ async function dispatch(event: Stripe.Event): Promise<void> {
       // automatically at capture; this is our notification that the
       // therapist's share moved off the platform balance into the
       // connected account. We treat it as `paid` immediately because
-      // destination-charge transfers are instant — the
+      // destination-charge transfers are instant - the
       // pending/in_transit states in the enum are reserved for future
       // separate-transfer flows.
       const transfer = event.data.object as Stripe.Transfer;
@@ -247,11 +247,11 @@ async function dispatch(event: Stripe.Event): Promise<void> {
  *   payments.retreat_id        → retreats                              (best-effort)
  *
  * Idempotent on stripe_transfer_id (UNIQUE). Reruns of the same event
- * just update status — no double-insert.
+ * just update status - no double-insert.
  *
  * Therapist lookup is REQUIRED: an unrecognised destination account
  * means either a stale connect_id in our DB or someone else's transfer
- * routed through our platform — both warrant a 500 so Stripe retries
+ * routed through our platform - both warrant a 500 so Stripe retries
  * (and the on-call human notices).
  */
 async function upsertPayoutFromTransfer(

@@ -7,7 +7,7 @@
  *   CC  total = ACH total ÷ (1 − ach_discount_pct)
  *
  * Always round at the cent boundary. Snapshot the rates onto the retreat at
- * creation — DO NOT join to live pricing_config when computing a retreat
+ * creation - DO NOT join to live pricing_config when computing a retreat
  * total later (DESIGN.md §4 snapshot rule).
  */
 
@@ -77,7 +77,7 @@ export function computePrice(input: PriceInput): PriceBreakdown {
  * scheduled_start_date refund the deposit minus a flat admin fee. Inside the
  * 3-week window the deposit is forfeit (return value 0).
  *
- * `weeksUntilStart` is the caller's responsibility — same source-of-truth as
+ * `weeksUntilStart` is the caller's responsibility - same source-of-truth as
  * the cancellation form. We don't accept Date here because we don't want
  * timezone bugs to determine refund eligibility.
  */

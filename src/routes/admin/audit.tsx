@@ -1,5 +1,5 @@
 /**
- * /admin/audit — global audit log with filters (P3, v0.15.0).
+ * /admin/audit - global audit log with filters (P3, v0.15.0).
  *
  * The audit_events table records every state-machine transition, every
  * Stripe webhook landing, every consent signature, every refund, and a
@@ -9,7 +9,7 @@
  *
  * Therapist scoping: a non-admin therapist sees only audit events for
  * retreats they own. Rows with retreat_id IS NULL (system events) are
- * admin-only — we never join therapists into them so they would silently
+ * admin-only - we never join therapists into them so they would silently
  * drop out for non-admins anyway.
  *
  * Query params:
@@ -285,11 +285,11 @@ adminAuditRoute.get('/', async (c) => {
                             {r.retreatId.slice(0, 8)}
                           </a>
                         ) : (
-                          <span class="text-xs text-muted-foreground">—</span>
+                          <span class="text-xs text-muted-foreground">-</span>
                         )}
                       </Td>
                       <Td class="font-mono text-xs">
-                        {r.actorId ? r.actorId.slice(0, 12) : '—'}
+                        {r.actorId ? r.actorId.slice(0, 12) : '-'}
                       </Td>
                       <Td>
                         <code class="font-mono text-xs break-all">{truncated}</code>

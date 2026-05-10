@@ -1,5 +1,5 @@
 /**
- * /api/cron/state-transitions — Cloud Scheduler target (DESIGN.md §10).
+ * /api/cron/state-transitions - Cloud Scheduler target (DESIGN.md §10).
  *
  * Auth model:
  *   - Cloud Scheduler is configured with an OIDC token addressed at the
@@ -20,7 +20,7 @@
  *
  * No PHI in response or logs.
  *
- * Audit #33 — cron TZ for non-Eastern clients:
+ * Audit #33 - cron TZ for non-Eastern clients:
  *   The America/New_York anchor matches every current ITR client (all on
  *   the US East coast, scheduling in their local time). If a future
  *   therapist or location operates in a different timezone, this hard-
@@ -29,7 +29,7 @@
  *     a) per-retreat TZ column, populated from the location, or
  *     b) per-therapist default TZ.
  *   Either path also requires updating the matching Cloud Scheduler job
- *   (scripts/m4-create-scheduler.sh) — keep that in sync if/when changed.
+ *   (scripts/m4-create-scheduler.sh) - keep that in sync if/when changed.
  */
 
 import { Hono } from 'hono';
