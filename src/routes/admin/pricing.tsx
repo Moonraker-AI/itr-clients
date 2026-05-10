@@ -93,7 +93,7 @@ adminPricingRoute.get('/', async (c) => {
 
   return c.html(
     <Layout title="Pricing - ITR Clients">
-      <AdminShell user={user} current="pricing">
+      <AdminShell user={user} current="pricing" wide>
         <PageHeader title="Pricing" description="Per-therapist rates and ACH discount config." />
 
         <Card class="mb-6">
@@ -160,8 +160,8 @@ adminPricingRoute.get('/', async (c) => {
                         name="full_day_dollars"
                         type="number"
                         min="0"
-                        step="0.01"
-                        value={(t.fullDay / 100).toFixed(2)}
+                        step="1"
+                        value={(t.fullDay / 100).toFixed(0)}
                         required
                         class="w-28 text-right inline-block"
                       />
@@ -172,8 +172,8 @@ adminPricingRoute.get('/', async (c) => {
                         name="half_day_dollars"
                         type="number"
                         min="0"
-                        step="0.01"
-                        value={t.halfDay == null ? '' : (t.halfDay / 100).toFixed(2)}
+                        step="1"
+                        value={t.halfDay == null ? '' : (t.halfDay / 100).toFixed(0)}
                         placeholder="-"
                         class="w-28 text-right inline-block"
                       />
@@ -184,8 +184,8 @@ adminPricingRoute.get('/', async (c) => {
                         name="kair_full_day_dollars"
                         type="number"
                         min="0"
-                        step="0.01"
-                        value={t.kairFullDay == null ? '' : (t.kairFullDay / 100).toFixed(2)}
+                        step="1"
+                        value={t.kairFullDay == null ? '' : (t.kairFullDay / 100).toFixed(0)}
                         placeholder="-"
                         class="w-28 text-right inline-block"
                       />
@@ -196,8 +196,8 @@ adminPricingRoute.get('/', async (c) => {
                         name="kair_half_day_dollars"
                         type="number"
                         min="0"
-                        step="0.01"
-                        value={t.kairHalfDay == null ? '' : (t.kairHalfDay / 100).toFixed(2)}
+                        step="1"
+                        value={t.kairHalfDay == null ? '' : (t.kairHalfDay / 100).toFixed(0)}
                         placeholder="-"
                         class="w-28 text-right inline-block"
                       />
@@ -209,8 +209,8 @@ adminPricingRoute.get('/', async (c) => {
                         type="number"
                         min="0"
                         max="100"
-                        step="0.01"
-                        value={Number(t.payoutPct).toFixed(2)}
+                        step="1"
+                        value={Number(t.payoutPct).toFixed(0)}
                         required
                         class="w-24 text-right inline-block"
                       />
