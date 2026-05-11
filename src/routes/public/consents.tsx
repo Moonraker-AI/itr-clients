@@ -194,6 +194,17 @@ publicConsentsRoute.get('/:token', async (c) => {
         </div>
       );
       break;
+    case 'awaiting_dates':
+      // v0.28.27: client paid + the system is waiting on the therapist
+      // to confirm dates. No CTA; this is a "ball is in their court"
+      // status page.
+      nextStep = (
+        <p class="text-sm text-muted-foreground">
+          Deposit received - thank you! Your therapist will confirm your
+          retreat dates next. We will email you when they do.
+        </p>
+      );
+      break;
     case 'scheduled':
       nextStep = (
         <p class="text-sm text-muted-foreground">Your retreat is scheduled. See you soon.</p>

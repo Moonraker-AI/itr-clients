@@ -36,6 +36,12 @@ export const retreatState = pgEnum('retreat_state', [
   'draft',
   'awaiting_consents',
   'awaiting_deposit',
+  // v0.28.27: client paid the deposit, retreat is waiting on the therapist
+  // to confirm dates. Previously the state stayed at awaiting_deposit and
+  // the client UI had no way to communicate "you're done, ball's in their
+  // court." Transition: awaiting_deposit -> awaiting_dates (deposit paid)
+  // -> scheduled (therapist confirmDates).
+  'awaiting_dates',
   'scheduled',
   'in_progress',
   'awaiting_final_charge',

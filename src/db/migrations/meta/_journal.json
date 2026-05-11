@@ -85,6 +85,13 @@
       "when": 1778260800000,
       "tag": "0011_payout_pct_default",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1778261400000,
+      "tag": "0012_awaiting_dates_state",
+      "breakpoints": true
     }
   ]
 }
