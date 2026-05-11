@@ -45,6 +45,7 @@ export const RETREAT_STATES = [
   'draft',
   'awaiting_consents',
   'awaiting_deposit',
+  'awaiting_dates',
   'scheduled',
   'in_progress',
   'awaiting_final_charge',
@@ -58,7 +59,11 @@ export type RetreatState = (typeof RETREAT_STATES)[number];
 const ALLOWED: Record<RetreatState, readonly RetreatState[]> = {
   draft: ['awaiting_consents', 'cancelled'],
   awaiting_consents: ['awaiting_deposit', 'cancelled'],
-  awaiting_deposit: ['scheduled', 'cancelled'],
+  // v0.28.27: deposit paid moves us to awaiting_dates; the legacy direct
+  // jump to `scheduled` stays in the graph so any in-flight retreats
+  // already at awaiting_deposit can still complete via confirmDates.
+  awaiting_deposit: ['awaiting_dates', 'scheduled', 'cancelled'],
+  awaiting_dates: ['scheduled', 'cancelled'],
   scheduled: ['in_progress', 'cancelled'],
   in_progress: ['awaiting_final_charge', 'cancelled'],
   awaiting_final_charge: ['completed', 'final_charge_failed', 'cancelled'],
@@ -398,10 +403,10 @@ export const transitions = {
    * Idempotent on `stripePaymentIntentId` - duplicate webhook deliveries
    * are absorbed silently.
    *
-   * NOTE: this does NOT change `retreats.state`. The state stays at
-   * `awaiting_deposit` until `confirmDates` (M4) flips it to `scheduled`
-   * - the design's "scheduled" precondition is BOTH deposit paid AND
-   * dates confirmed (DESIGN §5).
+   * v0.28.27: transitions `awaiting_deposit -> awaiting_dates` on first
+   * record. Idempotent re-deliveries do NOT advance the state again, and
+   * if the retreat is already past awaiting_deposit (e.g. confirmDates
+   * landed first via admin shortcut), the state is left alone.
    */
   async markDepositPaid(args: {
     retreatId: RetreatId;
@@ -420,8 +425,6 @@ export const transitions = {
     const upserted = await db.transaction(async (tx) => {
       const [r] = await tx.select().from(retreats).where(eq(retreats.id, args.retreatId));
       if (!r) throw new Error(`retreat not found: ${args.retreatId}`);
-      // No assertTransition: this writes a payment + audit but does not
-      // touch state. State transition graph is unchanged.
 
       const inserted = await tx
         .insert(payments)
@@ -464,6 +467,15 @@ export const transitions = {
             amount_cents: args.amountCents,
           },
         });
+        // v0.28.27: advance to awaiting_dates iff still on awaiting_deposit.
+        // Guarded so a late-arriving duplicate webhook + an admin who
+        // already confirmDates'd doesn't ping-pong the state machine.
+        if (r.state === 'awaiting_deposit') {
+          await tx
+            .update(retreats)
+            .set({ state: 'awaiting_dates', updatedAt: new Date() })
+            .where(eq(retreats.id, args.retreatId));
+        }
       }
 
       // Persist the saved payment method on stripe_customers so M5's
