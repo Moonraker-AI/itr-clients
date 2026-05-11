@@ -46,9 +46,96 @@ publicCheckoutRoute.get('/:token/checkout', async (c) => {
     return c.redirect(`/c/${token}`);
   }
 
+  const methodRaw = c.req.query('method');
+  const method: 'card' | 'us_bank_account' | null =
+    methodRaw === 'card'
+      ? 'card'
+      : methodRaw === 'ach'
+        ? 'us_bank_account'
+        : null;
+
+  // No method chosen yet - render the two-button chooser so the client
+  // picks CC (no discount, instant) or ACH (discounted, slower clearing).
+  if (method === null) {
+    const achPct = Number(ctx.achDiscountPct);
+    const safeAchPct = Number.isFinite(achPct) && achPct >= 0 && achPct < 1 ? achPct : 0;
+    const ccCents = ctx.depositCents;
+    const achCents = Math.round(ccCents * (1 - safeAchPct));
+    const pctLabel = `${(safeAchPct * 100).toFixed(1).replace(/\.0$/, '')}%`;
+
+    return c.html(
+      <Layout title="Choose payment method - Intensive Therapy Retreats">
+        <ClientShell width="xl">
+          <h1 class="text-2xl font-semibold tracking-tight mb-2">
+            Hi {ctx.firstName},
+          </h1>
+          <p class="text-muted-foreground mb-6">
+            Pick how you'd like to pay your deposit. Both options take you to a
+            secure Stripe checkout to enter your details.
+          </p>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Credit / debit card</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div class="text-3xl font-semibold tracking-tight mb-1">
+                  {formatCents(ccCents)}
+                </div>
+                <p class="text-sm text-muted-foreground mb-4">
+                  Charged instantly. Standard processing fees apply.
+                </p>
+                <LinkButton
+                  href={`/c/${token}/checkout?method=card`}
+                  variant="default"
+                  size="default"
+                  class="w-full"
+                >
+                  Pay by card
+                </LinkButton>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>
+                  Bank transfer (ACH)
+                  {safeAchPct > 0 ? (
+                    <Badge variant="success" class="ml-2">
+                      Save {pctLabel}
+                    </Badge>
+                  ) : null}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div class="text-3xl font-semibold tracking-tight mb-1">
+                  {formatCents(achCents)}
+                </div>
+                <p class="text-sm text-muted-foreground mb-4">
+                  Lower fees, so you save {pctLabel}. Clears in 1-4 business
+                  days; you'll authenticate your bank during checkout.
+                </p>
+                <LinkButton
+                  href={`/c/${token}/checkout?method=ach`}
+                  variant="default"
+                  size="default"
+                  class="w-full"
+                >
+                  Pay by bank
+                </LinkButton>
+              </CardContent>
+            </Card>
+          </div>
+        </ClientShell>
+      </Layout>,
+    );
+  }
+
+  // Method picked - upsert the Stripe customer + create the session.
   const baseUrl = publicBaseUrl(c);
   const successUrl = `${baseUrl}/c/${token}/checkout/success?cs={CHECKOUT_SESSION_ID}`;
-  const cancelUrl = `${baseUrl}/c/${token}`;
+  const cancelUrl = `${baseUrl}/c/${token}/checkout`;
 
   const { db } = await getDb();
   const [existing] = await db
@@ -84,12 +171,23 @@ publicCheckoutRoute.get('/:token/checkout', async (c) => {
       .where(eq(stripeCustomers.clientId, ctx.clientId));
   }
 
+  // Apply ACH discount at session-creation time. CC pays the full
+  // depositCents snapshot; ACH pays a discounted amount derived from the
+  // retreat's frozen achDiscountPct (so it can't drift if pricing_config
+  // changes mid-retreat).
+  const achPct = Number(ctx.achDiscountPct);
+  const safeAchPct = Number.isFinite(achPct) && achPct >= 0 && achPct < 1 ? achPct : 0;
+  const chargeCents =
+    method === 'us_bank_account'
+      ? Math.round(ctx.depositCents * (1 - safeAchPct))
+      : ctx.depositCents;
+
   const session = await createDepositCheckoutSession({
     clientId: ctx.clientId,
     retreatId: ctx.retreatId,
     stripeCustomerId: customer.stripeCustomerId,
-    depositCents: ctx.depositCents,
-    paymentMethod: 'card',
+    depositCents: chargeCents,
+    paymentMethod: method,
     successUrl,
     cancelUrl,
     connectAccountId: ctx.connectAccountId,
@@ -99,6 +197,8 @@ publicCheckoutRoute.get('/:token/checkout', async (c) => {
   log.info('checkout_session_created', {
     retreatId: ctx.retreatId,
     sessionId: session.sessionId,
+    paymentMethod: method,
+    chargeCents,
     dryRun: session.dryRun,
   });
 
@@ -209,6 +309,7 @@ async function loadRetreatContextByToken(token: string) {
       state: retreats.state,
       clientId: retreats.clientId,
       depositCents: retreats.depositCents,
+      achDiscountPct: retreats.achDiscountPct,
       firstName: clients.firstName,
       lastName: clients.lastName,
       email: clients.email,

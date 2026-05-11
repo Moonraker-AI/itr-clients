@@ -140,7 +140,7 @@ adminPricingRoute.get('/', async (c) => {
                       <Select
                         form={`t-${t.slug}`}
                         name="role"
-                        class="w-40 inline-block"
+                        class="w-48 inline-block"
                       >
                         {ROLES.map((r) => (
                           <option value={r} selected={r === t.role}>
@@ -158,7 +158,7 @@ adminPricingRoute.get('/', async (c) => {
                         step="1"
                         value={(t.fullDay / 100).toFixed(0)}
                         required
-                        class="w-28 text-right inline-block"
+                        class="w-24 text-right inline-block"
                       />
                     </Td>
                     <Td class="text-right">
@@ -170,7 +170,7 @@ adminPricingRoute.get('/', async (c) => {
                         step="1"
                         value={t.halfDay == null ? '' : (t.halfDay / 100).toFixed(0)}
                         placeholder="-"
-                        class="w-28 text-right inline-block"
+                        class="w-24 text-right inline-block"
                       />
                     </Td>
                     <Td class="text-right">
@@ -182,7 +182,7 @@ adminPricingRoute.get('/', async (c) => {
                         step="1"
                         value={t.kairFullDay == null ? '' : (t.kairFullDay / 100).toFixed(0)}
                         placeholder="-"
-                        class="w-28 text-right inline-block"
+                        class="w-24 text-right inline-block"
                       />
                     </Td>
                     <Td class="text-right">
@@ -194,7 +194,7 @@ adminPricingRoute.get('/', async (c) => {
                         step="1"
                         value={t.kairHalfDay == null ? '' : (t.kairHalfDay / 100).toFixed(0)}
                         placeholder="-"
-                        class="w-28 text-right inline-block"
+                        class="w-24 text-right inline-block"
                       />
                     </Td>
                     <Td class="text-right">
@@ -207,7 +207,7 @@ adminPricingRoute.get('/', async (c) => {
                         step="1"
                         value={Number(t.payoutPct).toFixed(0)}
                         required
-                        class="w-24 text-right inline-block"
+                        class="w-20 text-right inline-block"
                       />
                     </Td>
                     <Td>

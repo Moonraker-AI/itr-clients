@@ -304,8 +304,13 @@ export interface CreateDepositSessionArgs {
   retreatId: string;
   stripeCustomerId: string;
   depositCents: number;
-  /** 'card' for now; ACH path lands later via Customer Portal. */
-  paymentMethod: 'card';
+  /**
+   * Stripe `payment_method_types` entry. v0.28.13 adds the ACH path:
+   * client picks card vs. us_bank_account on the in-app chooser before
+   * we create the session. Discount is applied to `depositCents` by
+   * the caller, so this field is purely the Stripe method selector.
+   */
+  paymentMethod: 'card' | 'us_bank_account';
   successUrl: string;
   cancelUrl: string;
   /**
