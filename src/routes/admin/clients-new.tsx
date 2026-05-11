@@ -193,7 +193,7 @@ adminClientsNewRoute.get('/', async (c) => {
             <CardHeader>
               <CardTitle>Retreat</CardTitle>
             </CardHeader>
-            <CardContent class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <CardContent class="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Field label="Full days" for="planned_full_days">
                 <Input
                   id="planned_full_days"
@@ -215,12 +215,6 @@ adminClientsNewRoute.get('/', async (c) => {
                   value="0"
                   required
                 />
-              </Field>
-              <Field label="Payment method" for="payment_method">
-                <Select id="payment_method" name="payment_method">
-                  <option value="ach">ACH</option>
-                  <option value="card">Card</option>
-                </Select>
               </Field>
             </CardContent>
           </Card>
@@ -294,7 +288,12 @@ adminClientsNewRoute.post('/', async (c) => {
   const stateOfResidence = get('state_of_residence').trim() || null;
   const plannedFullDays = getNum('planned_full_days');
   const plannedHalfDays = getNum('planned_half_days');
-  const paymentMethod = (get('payment_method') as 'ach' | 'card') || 'ach';
+  // v0.28.21: payment method is no longer collected on the new-client
+  // form. The client picks card vs ACH at /c/<token>/checkout, where the
+  // chooser applies the ACH discount at session-creation time. The DB
+  // column keeps its 'ach' default purely as an audit/display value on
+  // the retreat detail page.
+  const paymentMethod: 'ach' | 'card' = 'ach';
   // v0.28.17: form collapses to Standard | Custom. DB enum still carries
   // legacy `sliding_scale` and `comp` for backwards-compat with old
   // retreats; we map Custom -> comp if both overrides come in as $0
