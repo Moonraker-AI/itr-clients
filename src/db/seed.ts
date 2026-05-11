@@ -69,6 +69,11 @@ const THERAPISTS: TherapistSeed[] = [
     locationSlug: 'northampton-ma',
     fullDayCents: 0,
     halfDayCents: null,
+    // Connect account seeded ahead of a future admin-revshare feature.
+    // Not used today (Chris doesn't have retreats assigned); kept here
+    // so a flip to "platform takes a cut on every charge -> Connect
+    // transfer to Chris" is a flag-flip, not a schema change.
+    stripeConnectAccountId: 'acct_1GyMnvBQh6FUgIfx',
   },
   {
     slug: 'amy-shuman',
