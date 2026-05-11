@@ -1,5 +1,5 @@
 export { cn } from './cn.js';
-export { Layout, AdminShell, ClientShell, PageHeader, ScriptBlock } from './layout.js';
+export { Layout, AdminShell, ClientShell, PageHeader, ScriptBlock, STATIC_V_QS } from './layout.js';
 export { Button, LinkButton } from './button.js';
 export { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from './card.js';
 export { Input, Textarea } from './input.js';

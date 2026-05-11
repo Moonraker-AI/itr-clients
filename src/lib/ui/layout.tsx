@@ -11,6 +11,16 @@ const FAVICON_LINKS = (
   </>
 );
 
+/**
+ * Cache-bust query for /static/* assets. We serve those with
+ * `Cache-Control: public, max-age=31536000, immutable` for perf, so the
+ * URL itself has to change between revisions or the browser will hold
+ * onto the old asset for a year. K_REVISION is set per Cloud Run revision
+ * (changes on every deploy); fall back to "dev" locally.
+ */
+const STATIC_VERSION = process.env.K_REVISION ?? 'dev';
+export const STATIC_V_QS = `?v=${encodeURIComponent(STATIC_VERSION)}`;
+
 type LayoutProps = PropsWithChildren<{
   title: string;
   /** Extra <head> tags (preconnect, scripts, etc). */
@@ -32,12 +42,12 @@ export const Layout: FC<LayoutProps> = ({ title, head, theme, scripts, children 
         <meta name="color-scheme" content="light dark" />
         <title>{title}</title>
         {FAVICON_LINKS}
-        <link rel="stylesheet" href="/static/app.css" />
+        <link rel="stylesheet" href={`/static/app.css${STATIC_V_QS}`} />
         <script>{raw(PREPAINT_THEME)}</script>
         {/* v0.28.0: vanilla browser error reporter, posts to
             /api/browser-error → Cloud Error Reporting via Cloud
             Logging. No external SDK, no DSN, no BAA risk. */}
-        <script src="/static/js/browser-error.js" defer></script>
+        <script src={`/static/js/browser-error.js${STATIC_V_QS}`} defer></script>
         {head}
       </head>
       <body class="min-h-screen bg-background text-foreground antialiased">
@@ -219,7 +229,7 @@ export const AdminShell: FC<AdminShellProps> = ({ user, current, wide, children 
           class={wide ? 'px-6 py-8' : 'px-6 py-8 max-w-6xl mx-auto'}
         >{children}</div>
       </main>
-      <script src="/static/js/admin-shell.js" defer></script>
+      <script src={`/static/js/admin-shell.js${STATIC_V_QS}`} defer></script>
     </div>
   );
 };
@@ -281,6 +291,6 @@ export const ClientShell: FC<ClientShellProps> = ({ width = 'md', children }) =>
     </main>
     {/* Reuse admin-shell.js - it no-ops gracefully when sign-out/row-link
         targets are absent on client pages and just binds the theme toggle. */}
-    <script src="/static/js/admin-shell.js" defer></script>
+    <script src={`/static/js/admin-shell.js${STATIC_V_QS}`} defer></script>
   </div>
 );

@@ -26,6 +26,7 @@ import {
   CardTitle,
   ClientShell,
   Layout,
+  STATIC_V_QS,
 } from '../../lib/ui/index.js';
 
 export const publicPaymentRoute = new Hono();
@@ -225,7 +226,7 @@ function renderConfirmPaymentPage(args: {
           </CardContent>
         </Card>
       </ClientShell>
-      <script src="/static/js/stripe-confirm.js" defer></script>
+      <script src={`/static/js/stripe-confirm.js${STATIC_V_QS}`} defer></script>
     </Layout>
   );
 }
