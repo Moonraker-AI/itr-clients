@@ -86,10 +86,10 @@ interface NavItem {
 const NAV: NavItem[] = [
   { href: '/admin', label: 'Dashboard', match: 'dashboard' },
   { href: '/admin/clients/new', label: 'New Client', match: 'new' },
-  { href: '/admin/audit', label: 'Audit log', match: 'audit' },
+  { href: '/admin/pricing', label: 'Pricing', match: 'pricing', adminOnly: true },
   { href: '/admin/payouts', label: 'Payouts', match: 'payouts' },
   { href: '/admin/email-preview', label: 'Email preview', match: 'email-preview', adminOnly: true },
-  { href: '/admin/pricing', label: 'Pricing', match: 'pricing', adminOnly: true },
+  { href: '/admin/audit', label: 'Audit log', match: 'audit' },
 ];
 
 const SUN_ICON = (
