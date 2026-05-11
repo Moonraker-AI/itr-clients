@@ -121,8 +121,7 @@ publicCheckoutRoute.get('/:token/checkout', async (c) => {
                   {formatCents(achCents)}
                 </div>
                 <p class="text-sm text-muted-foreground mb-4">
-                  Lower fees, so you save {pctLabel}. Clears in 1-4 business
-                  days; you'll authenticate your bank during checkout.
+                  Save {pctLabel} over card. Clears in 1-4 business days.
                 </p>
                 <LinkButton
                   href={`/c/${token}/checkout?method=ach`}
