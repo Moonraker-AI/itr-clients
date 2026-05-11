@@ -100,6 +100,37 @@ steps:
           --subnet=default \
           --vpc-egress=private-ranges-only
 
+  # itr-seed (canonical roster) — DEPLOYED here so the Job image is
+  # always in lockstep with the current src/db/seed.ts. Ops fires it
+  # on demand when role / Connect / rate fields change in seed.ts.
+  # Not auto-executed: running on every deploy would re-set fields
+  # admins may have intentionally diverged via /admin/pricing.
+  - id: seed-deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        IMAGE="$_REGION-docker.pkg.dev/$_PROJECT/itr/itr-client-hq:$COMMIT_SHA"
+        gcloud run jobs deploy itr-seed \
+          --image="$$IMAGE" \
+          --project=$_PROJECT \
+          --region=$_REGION \
+          --service-account=$_RUNTIME_SA \
+          --set-cloudsql-instances=$_CLOUD_SQL_INSTANCE \
+          --set-env-vars=NODE_ENV=production,CLOUD_SQL_INSTANCE=$_CLOUD_SQL_INSTANCE,MIGRATE_VIA_SOCKET=1 \
+          --set-secrets=DB_URL=db-url:latest \
+          --command=node \
+          --args=dist/db/seed.js \
+          --max-retries=0 \
+          --task-timeout=300s \
+          --cpu=1 \
+          --memory=512Mi \
+          --network=default \
+          --subnet=default \
+          --vpc-egress=private-ranges-only
+
   - id: deploy
     name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
     entrypoint: gcloud

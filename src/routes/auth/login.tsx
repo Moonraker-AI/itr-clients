@@ -24,6 +24,7 @@ import {
   CardHeader,
   CardTitle,
   Layout,
+  STATIC_V_QS,
 } from '../../lib/ui/index.js';
 
 export const adminLoginRoute = new Hono();
@@ -149,7 +150,7 @@ adminLoginRoute.get('/login', (c) => {
           </p>
         </div>
       </div>
-      <script src="/static/js/firebase-signin.js" defer></script>
+      <script src={`/static/js/firebase-signin.js${STATIC_V_QS}`} defer></script>
     </Layout>,
   );
 });

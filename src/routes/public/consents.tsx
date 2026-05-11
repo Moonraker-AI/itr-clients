@@ -56,6 +56,7 @@ import {
   Label,
   Layout,
   LinkButton,
+  STATIC_V_QS,
   Select,
   Textarea,
 } from '../../lib/ui/index.js';
@@ -1072,7 +1073,7 @@ function SignaturePad() {
           </span>
         </label>
       </CardContent>
-      <script src="/static/js/signature-pad.js" defer></script>
+      <script src={`/static/js/signature-pad.js${STATIC_V_QS}`} defer></script>
     </Card>
   );
 }
