@@ -224,19 +224,18 @@ adminClientsNewRoute.get('/', async (c) => {
               <Field label="Basis" for="pricing_basis">
                 <Select id="pricing_basis" name="pricing_basis">
                   <option value="standard">Standard</option>
-                  <option value="sliding_scale">Sliding scale</option>
-                  <option value="comp">Comp</option>
+                  <option value="custom">Custom</option>
                 </Select>
               </Field>
               <p class="text-xs text-muted-foreground">
-                Override rates only when basis is sliding-scale or comp. Leave blank to use therapist default.
+                Pick Custom to set any price - higher than the therapist default, lower, or $0 for a comp.
               </p>
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Field label="Override full-day ($)" for="override_full_day">
-                  <Input id="override_full_day" name="override_full_day" type="number" min="0" step="0.01" />
+                <Field label="Custom full-day ($)" for="override_full_day">
+                  <Input id="override_full_day" name="override_full_day" type="number" min="0" step="1" />
                 </Field>
-                <Field label="Override half-day ($)" for="override_half_day">
-                  <Input id="override_half_day" name="override_half_day" type="number" min="0" step="0.01" />
+                <Field label="Custom half-day ($)" for="override_half_day">
+                  <Input id="override_half_day" name="override_half_day" type="number" min="0" step="1" />
                 </Field>
               </div>
               <Field label="Pricing notes" for="pricing_notes" hint="Internal - never rendered client-side.">
@@ -280,8 +279,26 @@ adminClientsNewRoute.post('/', async (c) => {
   const plannedFullDays = getNum('planned_full_days');
   const plannedHalfDays = getNum('planned_half_days');
   const paymentMethod = (get('payment_method') as 'ach' | 'card') || 'ach';
-  const pricingBasis =
-    (get('pricing_basis') as 'standard' | 'sliding_scale' | 'comp') || 'standard';
+  // v0.28.17: form collapses to Standard | Custom. DB enum still carries
+  // legacy `sliding_scale` and `comp` for backwards-compat with old
+  // retreats; we map Custom -> comp if both overrides come in as $0
+  // (full comp), else -> sliding_scale. Keeps the detail page +
+  // historical rows readable without a migration.
+  const pricingBasisForm =
+    (get('pricing_basis') as 'standard' | 'custom') || 'standard';
+  const isCustom = pricingBasisForm === 'custom';
+  const overrideFullStr = get('override_full_day').trim();
+  const overrideHalfStr = get('override_half_day').trim();
+  const isCompShape =
+    isCustom &&
+    overrideFullStr !== '' &&
+    Number(overrideFullStr) === 0 &&
+    (overrideHalfStr === '' || Number(overrideHalfStr) === 0);
+  const pricingBasis: 'standard' | 'sliding_scale' | 'comp' = isCustom
+    ? isCompShape
+      ? 'comp'
+      : 'sliding_scale'
+    : 'standard';
   const pricingNotes = get('pricing_notes').trim() || null;
   const overrideFullDayDollars = get('override_full_day');
   const overrideHalfDayDollars = get('override_half_day');
