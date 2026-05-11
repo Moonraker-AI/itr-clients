@@ -9,7 +9,7 @@ import { Hono } from 'hono';
 import { eq, asc } from 'drizzle-orm';
 
 import { getDb } from '../../db/client.js';
-import { pricingConfig, therapists, locations } from '../../db/schema.js';
+import { pricingConfig, therapists } from '../../db/schema.js';
 import { ensureCsrfToken, verifyCsrfToken } from '../../lib/csrf.js';
 import { formatCents } from '../../lib/pricing.js';
 import { log } from '../../lib/phi-redactor.js';
@@ -51,7 +51,6 @@ type Row = {
   kairFullDay: number | null;
   kairHalfDay: number | null;
   active: boolean;
-  locationName: string | null;
   connectAccountId: string | null;
   payoutPct: string;
 };
@@ -74,12 +73,10 @@ adminPricingRoute.get('/', async (c) => {
       kairFullDay: therapists.kairFullDayCents,
       kairHalfDay: therapists.kairHalfDayCents,
       active: therapists.active,
-      locationName: locations.name,
       connectAccountId: therapists.stripeConnectAccountId,
       payoutPct: therapists.therapistPayoutPct,
     })
     .from(therapists)
-    .leftJoin(locations, eq(therapists.primaryLocationId, locations.id))
     .orderBy(asc(therapists.fullName));
 
   const [config] = await db
@@ -125,7 +122,6 @@ adminPricingRoute.get('/', async (c) => {
                 <Tr>
                   <Th>Therapist</Th>
                   <Th>Role</Th>
-                  <Th>Location</Th>
                   <Th class="text-right">Full day ($)</Th>
                   <Th class="text-right">Half day ($)</Th>
                   <Th class="text-right">KAIR Full ($)</Th>
@@ -153,7 +149,6 @@ adminPricingRoute.get('/', async (c) => {
                         ))}
                       </Select>
                     </Td>
-                    <Td class="text-sm">{t.locationName ?? '-'}</Td>
                     <Td class="text-right">
                       <Input
                         form={`t-${t.slug}`}
