@@ -196,6 +196,25 @@ export function buildConnectParams(args: {
 }
 
 let cachedClient: Stripe | null = null;
+const SELF_DESTINATION_ERROR_RE =
+  /cannot be set to your own account|transfer_data\[destination\]/i;
+
+/**
+ * Stripe rejects `transfer_data[destination]` when the destination equals
+ * the platform's own account. Happens when a therapist's
+ * `stripeConnectAccountId` matches the platform (mis-seeded, or a test-key
+ * env collides with a live therapist row). True for the surfaced error
+ * "param cannot be set to your own account" or any variant we observe.
+ */
+function isSelfDestinationError(err: unknown): boolean {
+  const msg =
+    err instanceof Error
+      ? err.message
+      : typeof err === 'string'
+        ? err
+        : '';
+  return SELF_DESTINATION_ERROR_RE.test(msg);
+}
 
 function getClient(): Stripe | null {
   if (cachedClient) return cachedClient;
@@ -334,42 +353,66 @@ export async function createDepositCheckoutSession(
     return { sessionId, url: args.successUrl, dryRun: true };
   }
 
-  const connect = buildConnectParams({
-    connectAccountId: args.connectAccountId ?? null,
-    payoutPct: args.payoutPct ?? null,
-    amountCents: args.depositCents,
-  });
-
   const client = getClient()!;
-  const session = await client.checkout.sessions.create({
-    mode: 'payment',
-    customer: args.stripeCustomerId,
-    payment_method_types: [args.paymentMethod],
-    line_items: [
-      {
-        price_data: {
-          currency: 'usd',
-          unit_amount: args.depositCents,
-          product_data: { name: description },
+
+  const buildSessionParams = (useConnect: boolean) => {
+    const connect = useConnect
+      ? buildConnectParams({
+          connectAccountId: args.connectAccountId ?? null,
+          payoutPct: args.payoutPct ?? null,
+          amountCents: args.depositCents,
+        })
+      : { transferData: null, applicationFeeAmount: null };
+    return {
+      mode: 'payment' as const,
+      customer: args.stripeCustomerId,
+      payment_method_types: [args.paymentMethod],
+      line_items: [
+        {
+          price_data: {
+            currency: 'usd' as const,
+            unit_amount: args.depositCents,
+            product_data: { name: description },
+          },
+          quantity: 1,
         },
-        quantity: 1,
+      ],
+      payment_intent_data: {
+        // Save the card on the Customer for the off-session final charge.
+        setup_future_usage: 'off_session' as const,
+        description,
+        metadata,
+        statement_descriptor_suffix: STATEMENT_DESCRIPTOR.slice(0, 22),
+        ...(connect.transferData ? { transfer_data: connect.transferData } : {}),
+        ...(connect.applicationFeeAmount != null
+          ? { application_fee_amount: connect.applicationFeeAmount }
+          : {}),
       },
-    ],
-    payment_intent_data: {
-      // Save the card on the Customer for the off-session final charge.
-      setup_future_usage: 'off_session',
-      description,
       metadata,
-      statement_descriptor_suffix: STATEMENT_DESCRIPTOR.slice(0, 22),
-      ...(connect.transferData ? { transfer_data: connect.transferData } : {}),
-      ...(connect.applicationFeeAmount != null
-        ? { application_fee_amount: connect.applicationFeeAmount }
-        : {}),
-    },
-    metadata,
-    success_url: args.successUrl,
-    cancel_url: args.cancelUrl,
-  });
+      success_url: args.successUrl,
+      cancel_url: args.cancelUrl,
+    };
+  };
+
+  let session;
+  try {
+    session = await client.checkout.sessions.create(buildSessionParams(true));
+  } catch (err) {
+    // Self-destination guard: if the therapist's Connect account id matches
+    // the platform's own, Stripe rejects transfer_data[destination]. Retry
+    // as a direct charge so the deposit still goes through; surface a warn
+    // so an operator can fix the seeded Connect id later.
+    if (args.connectAccountId && isSelfDestinationError(err)) {
+      log.warn('stripe_connect_self_destination_fallback', {
+        retreatId: args.retreatId,
+        destination: args.connectAccountId,
+        error: (err as Error).message,
+      });
+      session = await client.checkout.sessions.create(buildSessionParams(false));
+    } else {
+      throw err;
+    }
+  }
 
   return {
     sessionId: session.id,
@@ -456,32 +499,58 @@ export async function chargeFinalBalance(
     };
   }
 
-  const connect = buildConnectParams({
-    connectAccountId: args.connectAccountId ?? null,
-    payoutPct: args.payoutPct ?? null,
-    amountCents: args.amountCents,
-  });
-
   const client = getClient()!;
+
+  const buildPIParams = (useConnect: boolean) => {
+    const connect = useConnect
+      ? buildConnectParams({
+          connectAccountId: args.connectAccountId ?? null,
+          payoutPct: args.payoutPct ?? null,
+          amountCents: args.amountCents,
+        })
+      : { transferData: null, applicationFeeAmount: null };
+    return {
+      amount: args.amountCents,
+      currency: 'usd' as const,
+      customer: args.stripeCustomerId,
+      payment_method: args.paymentMethodId,
+      off_session: true,
+      confirm: true,
+      description,
+      metadata,
+      statement_descriptor_suffix: STATEMENT_DESCRIPTOR.slice(0, 22),
+      ...(connect.transferData ? { transfer_data: connect.transferData } : {}),
+      ...(connect.applicationFeeAmount != null
+        ? { application_fee_amount: connect.applicationFeeAmount }
+        : {}),
+    };
+  };
+
   try {
-    const pi = await client.paymentIntents.create(
-      {
-        amount: args.amountCents,
-        currency: 'usd',
-        customer: args.stripeCustomerId,
-        payment_method: args.paymentMethodId,
-        off_session: true,
-        confirm: true,
-        description,
-        metadata,
-        statement_descriptor_suffix: STATEMENT_DESCRIPTOR.slice(0, 22),
-        ...(connect.transferData ? { transfer_data: connect.transferData } : {}),
-        ...(connect.applicationFeeAmount != null
-          ? { application_fee_amount: connect.applicationFeeAmount }
-          : {}),
-      },
-      { idempotencyKey: args.idempotencyKey },
-    );
+    let pi;
+    try {
+      pi = await client.paymentIntents.create(buildPIParams(true), {
+        idempotencyKey: args.idempotencyKey,
+      });
+    } catch (innerErr) {
+      // Self-destination guard - same shape as the deposit checkout path.
+      if (args.connectAccountId && isSelfDestinationError(innerErr)) {
+        log.warn('stripe_connect_self_destination_fallback', {
+          retreatId: args.retreatId,
+          destination: args.connectAccountId,
+          error: (innerErr as Error).message,
+        });
+        pi = await client.paymentIntents.create(buildPIParams(false), {
+          // Re-use the same idempotency key. Stripe's idempotency layer
+          // returns the prior failed response for the same key, so we
+          // append :no-connect to scope this fallback's idempotency
+          // distinctly from the connect attempt.
+          idempotencyKey: `${args.idempotencyKey}:no-connect`,
+        });
+      } else {
+        throw innerErr;
+      }
+    }
     return mapPaymentIntent(pi);
   } catch (err) {
     // `off_session: true` failures throw with `err.payment_intent` populated
