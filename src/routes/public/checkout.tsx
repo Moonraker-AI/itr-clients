@@ -39,6 +39,14 @@ import {
 export const publicCheckoutRoute = new Hono();
 
 publicCheckoutRoute.get('/:token/checkout', async (c) => {
+  // Bust browser + intermediary caches. Pre-v0.28.13 this route was a 302
+  // straight to Stripe, and browsers (Brave/Chromium) cache 302s; after
+  // the chooser landed in v0.28.13 some users still saw the old redirect
+  // until a hard refresh. no-store keeps the chooser + the post-pick
+  // redirect both ephemeral.
+  c.header('Cache-Control', 'no-store, must-revalidate');
+  c.header('Pragma', 'no-cache');
+
   const token = c.req.param('token');
   const ctx = await loadRetreatContextByToken(token);
   if (!ctx) return c.notFound();
