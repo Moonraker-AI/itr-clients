@@ -39,6 +39,7 @@ import {
   Input,
   Layout,
   PageHeader,
+  STATIC_V_QS,
   Select,
   Textarea,
 } from '../../lib/ui/index.js';
@@ -81,7 +82,15 @@ adminClientsNewRoute.get('/', async (c) => {
     : null;
 
   return c.html(
-    <Layout title="New client + retreat - ITR Clients">
+    <Layout
+      title="New client + retreat - ITR Clients"
+      scripts={
+        <script
+          src={`/static/js/admin-clients-new.js${STATIC_V_QS}`}
+          defer
+        ></script>
+      }
+    >
       <AdminShell user={user} current="new">
         <div class="max-w-3xl mx-auto">
           <PageHeader title="New client + retreat" description="Create record and send the consent package." />
@@ -227,20 +236,27 @@ adminClientsNewRoute.get('/', async (c) => {
                   <option value="custom">Custom</option>
                 </Select>
               </Field>
-              <p class="text-xs text-muted-foreground">
-                Pick Custom to set any price - higher than the therapist default, lower, or $0 for a comp.
-              </p>
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Field label="Custom full-day ($)" for="override_full_day">
-                  <Input id="override_full_day" name="override_full_day" type="number" min="0" step="1" />
-                </Field>
-                <Field label="Custom half-day ($)" for="override_half_day">
-                  <Input id="override_half_day" name="override_half_day" type="number" min="0" step="1" />
+              {/* `hidden` by default; admin-clients-new.js flips it whenever
+                  the Basis select moves to/from `custom`. Pre-script-load
+                  the inputs stay hidden, so an admin who form-submits before
+                  JS hydrates can't accidentally send override values for a
+                  standard-priced retreat. */}
+              <div id="pricing-custom-fields" class="space-y-4" hidden>
+                <p class="text-xs text-muted-foreground">
+                  Set any price - higher than the therapist default, lower, or $0 for a comp.
+                </p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Field label="Custom full-day ($)" for="override_full_day">
+                    <Input id="override_full_day" name="override_full_day" type="number" min="0" step="1" />
+                  </Field>
+                  <Field label="Custom half-day ($)" for="override_half_day">
+                    <Input id="override_half_day" name="override_half_day" type="number" min="0" step="1" />
+                  </Field>
+                </div>
+                <Field label="Pricing notes" for="pricing_notes" hint="Internal - never rendered client-side.">
+                  <Textarea id="pricing_notes" name="pricing_notes" rows={3} />
                 </Field>
               </div>
-              <Field label="Pricing notes" for="pricing_notes" hint="Internal - never rendered client-side.">
-                <Textarea id="pricing_notes" name="pricing_notes" rows={3} />
-              </Field>
             </CardContent>
           </Card>
 
