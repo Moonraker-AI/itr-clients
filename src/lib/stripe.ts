@@ -200,8 +200,21 @@ export function buildConnectParams(args: {
 }
 
 let cachedClient: Stripe | null = null;
+/**
+ * Errors that mean "the Connect destination on this charge is broken",
+ * regardless of the underlying reason. Caught + retried as a direct
+ * charge in both deposit checkout and final off-session paths.
+ *
+ *   - "cannot be set to your own account": v0.28.8 - destination equals
+ *     the platform's own account.
+ *   - "No such destination": v0.28.24 - destination is a Connect id from
+ *     a different Stripe mode (live vs. test) or simply doesn't exist
+ *     on this platform.
+ *   - "transfer_data[destination]": generic Stripe validation error on
+ *     the destination param shape.
+ */
 const SELF_DESTINATION_ERROR_RE =
-  /cannot be set to your own account|transfer_data\[destination\]/i;
+  /cannot be set to your own account|no such destination|transfer_data\[destination\]/i;
 
 /**
  * Stripe rejects `transfer_data[destination]` when the destination equals

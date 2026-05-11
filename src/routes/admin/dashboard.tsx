@@ -216,11 +216,6 @@ adminDashboardRoute.get('/', async (c) => {
           <LinkButton href="/admin/clients/new" size="sm">
             + New client
           </LinkButton>
-          {user?.role === 'admin' ? (
-            <LinkButton href="/admin/pricing" variant="outline" size="sm">
-              Pricing config
-            </LinkButton>
-          ) : null}
         </PageHeader>
 
         <Card class="mb-6">

@@ -135,7 +135,7 @@ adminPricingRoute.get('/', async (c) => {
               <Tbody>
                 {(rows as Row[]).map((t) => (
                   <Tr>
-                    <Td class="font-medium">{t.fullName}</Td>
+                    <Td class="font-medium whitespace-nowrap">{t.fullName}</Td>
                     <Td>
                       <Select
                         form={`t-${t.slug}`}

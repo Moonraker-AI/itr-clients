@@ -125,9 +125,7 @@ adminClientsNewRoute.get('/', async (c) => {
                         value={t.id}
                         data-kair-eligible={t.kairEligible ? '1' : '0'}
                       >
-                        {t.fullName} ({formatCents(t.defaultFullDayCents)} /{' '}
-                        {t.defaultHalfDayCents == null ? '-' : formatCents(t.defaultHalfDayCents)})
-                        {t.kairEligible ? ' · KAIR' : ''}
+                        {t.fullName}{t.kairEligible ? ' · KAIR' : ''}
                       </option>
                     ))}
                   </Select>
