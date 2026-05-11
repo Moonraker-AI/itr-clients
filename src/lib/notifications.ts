@@ -30,10 +30,22 @@ import { log } from './phi-redactor.js';
  * also notified. Resolved at send time via retreat.therapist_id, so
  * therapists get notified ONLY for their own retreats.
  */
+/**
+ * Events that fan out to the retreat's assigned therapist in addition to
+ * the shared notification_recipients inbox. Two flavours bucketed
+ * together because the wiring is identical (resolve retreat -> therapist
+ * email and add to the recipient set):
+ *
+ *   - Action-required: deposit_paid, final_charge_failed,
+ *     final_charge_retry_exhausted.
+ *   - Informational milestones the therapist wants to know about:
+ *     consents_signed (added in v0.28.23 per ops request).
+ */
 const ACTION_REQUIRED_EVENTS: ReadonlySet<NotifyEvent> = new Set([
   'deposit_paid',
   'final_charge_failed',
   'final_charge_retry_exhausted',
+  'consents_signed',
 ]);
 
 export type NotifyEvent =

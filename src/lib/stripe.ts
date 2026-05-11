@@ -95,6 +95,15 @@ function assertMetadata(meta: Record<string, string> | undefined): void {
         `value exceeds 50 chars`,
       );
     }
+    // Allow-list match comes first. v0.28.23: a retreat UUID with 10+
+    // contiguous digit-only characters (e.g. third + fourth groups
+    // happening to be all digits) was tripping PHONE_RE downstream
+    // and breaking deposit checkout for those retreats. UUIDs +
+    // short snake_case tokens are intentional opaque ids and should
+    // never be evaluated against the PHI heuristics.
+    if (UUID_RE.test(value) || SHORT_TOKEN_RE.test(value)) {
+      continue;
+    }
     if (EMAIL_RE.test(value)) {
       throw new StripePhiViolation(`metadata.${key}`, 'value looks like an email');
     }
@@ -104,13 +113,8 @@ function assertMetadata(meta: Record<string, string> | undefined): void {
     if (DATE_RE.test(value)) {
       throw new StripePhiViolation(`metadata.${key}`, 'value looks like a date');
     }
-    // UUIDs and short snake_case tokens (payment_kind values) are explicitly
-    // allowed shapes. Anything else gets flagged conservatively.
-    if (
-      !UUID_RE.test(value) &&
-      !SHORT_TOKEN_RE.test(value) &&
-      !/^[A-Za-z0-9_-]+$/.test(value)
-    ) {
+    // Catch-all for anything outside the opaque-id shape.
+    if (!/^[A-Za-z0-9_-]+$/.test(value)) {
       throw new StripePhiViolation(
         `metadata.${key}`,
         'value contains characters outside the opaque-id shape',
