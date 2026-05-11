@@ -3,11 +3,11 @@ name: kair-after-program
 version: 1
 requires_signature: false
 surface: portal_resource
-title: "After-KAIR — Integrating Your Experience"
+title: "After-KAIR - Integrating Your Experience"
 required_fields: []
 ---
 
-# After-KAIR — Integrating Your Experience
+# After-KAIR - Integrating Your Experience
 
 Congratulations on completing your ketamine-assisted intensive retreat! This guide offers support as you integrate this powerful experience into your daily life. By reading and practicing the exercises provided, you can unlock the full potential of the retreat and cultivate lasting patterns of well-being and positive behavioral change.
 
@@ -15,7 +15,7 @@ Congratulations on completing your ketamine-assisted intensive retreat! This gui
 
 Psychedelics offer a potential key to unlocking new realms of consciousness. They are powerful because they may allow you to reconnect with hidden parts of yourself. This can shed light on patterns, blocks, or feelings of being stuck that have developed over time.
 
-After the retreat, you may experience a wide range of emotions. You might feel relief and calmness, or you might encounter sadness or worry. There's no "right" way to feel — healing is a personal journey with its own unique path.
+After the retreat, you may experience a wide range of emotions. You might feel relief and calmness, or you might encounter sadness or worry. There's no "right" way to feel - healing is a personal journey with its own unique path.
 
 During your ketamine journey, previously suppressed emotions, thoughts, sensations, and experiences may have surfaced. The healing process can be likened to a vast ocean, and your emotions to the waves that churn its surface. These waves, like emotions, come and go in a constant ebb and flow.
 

@@ -25,7 +25,7 @@ import {
   therapists,
 } from '../../db/schema.js';
 import { therapistCanAccess } from '../../lib/auth.js';
-import { getTemplate } from '../../lib/consent-templates.js';
+import { getTemplate, sortRequiredConsents } from '../../lib/consent-templates.js';
 import { formatCents } from '../../lib/pricing.js';
 import {
   AdminShell,
@@ -106,7 +106,7 @@ adminClientsDetailRoute.get('/:id', async (c) => {
   if (!row) return c.notFound();
   if (!therapistCanAccess(c.get('user'), row.therapistId)) return c.notFound();
 
-  const required = await db
+  const requiredRaw = await db
     .select({
       templateId: retreatRequiredConsents.templateId,
       name: consentTemplates.name,
@@ -116,6 +116,7 @@ adminClientsDetailRoute.get('/:id', async (c) => {
     .innerJoin(consentTemplates, eq(retreatRequiredConsents.templateId, consentTemplates.id))
     .where(eq(retreatRequiredConsents.retreatId, id))
     .orderBy(asc(consentTemplates.name));
+  const required = sortRequiredConsents(requiredRaw);
 
   const sigs = await db
     .select({

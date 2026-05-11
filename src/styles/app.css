@@ -199,6 +199,12 @@
   html {
     color-scheme: light;
     accent-color: var(--primary);
+    /* Bump base font size from the browser default 16px to 17px so all
+       Tailwind rem-based sizing scales up ~6% across both admin + client
+       surfaces. The retreat clientele skews older and a few of them
+       flagged the original 16px as small. Affects every utility built on
+       rem (text-xs, text-sm, text-base, padding, spacing). */
+    font-size: 17px;
   }
   html.dark {
     color-scheme: dark;

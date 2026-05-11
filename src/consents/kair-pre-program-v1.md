@@ -3,11 +3,11 @@ name: kair-pre-program
 version: 1
 requires_signature: false
 surface: portal_resource
-title: "Pre-KAIR — Gearing Up For Your KAIR Program"
+title: "Pre-KAIR - Gearing Up For Your KAIR Program"
 required_fields: []
 ---
 
-# Pre-KAIR — Gearing Up For Your KAIR Program
+# Pre-KAIR - Gearing Up For Your KAIR Program
 
 We're thrilled you've chosen to embark on this transformative journey through our KAIR (Ketamine-Assisted Intensive Retreat) program. This guide provides essential information on preparing for your sessions. Please read it completely and bring any questions or reflections to your first meeting with your therapist.
 
@@ -99,7 +99,7 @@ Once you've formulated your intentions, write them down and keep them somewhere 
 #### Some Journaling Suggestions for KAP
 
 - **Set Aside Time:** Dedicate a specific time each day for journaling, even if it's just for a few minutes. Consistency is key to reaping the benefits.
-- **Find Your Style:** There's no right or wrong way to journal. Experiment with freewriting, stream-of-consciousness, or bullet points — whatever feels most comfortable and engaging for you.
+- **Find Your Style:** There's no right or wrong way to journal. Experiment with freewriting, stream-of-consciousness, or bullet points - whatever feels most comfortable and engaging for you.
 - **Structured Prompts:** If you prefer more structure, you can use these prompts to help you refine your KAP intention. Examples include:
 
 ##### The Core Intention
