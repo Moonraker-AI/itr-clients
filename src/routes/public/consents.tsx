@@ -186,7 +186,7 @@ publicConsentsRoute.get('/:token', async (c) => {
             your retreat.
           </p>
           <LinkButton href={`/c/${ctx.clientToken}/checkout`} size="lg">
-            Pay deposit ({formatCents(ctx.depositCents)})
+            Pay deposit
           </LinkButton>
         </div>
       );
