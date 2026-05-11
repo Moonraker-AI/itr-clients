@@ -254,7 +254,7 @@ publicCheckoutRoute.get('/:token/checkout/success', async (c) => {
 
   return c.html(
     <Layout title={`Deposit ${paid ? 'received' : 'pending'} - Intensive Therapy Retreats`}>
-      <ClientShell>
+      <ClientShell width="xl">
         <Card>
           <CardHeader>
             <CardTitle>
@@ -280,9 +280,13 @@ publicCheckoutRoute.get('/:token/checkout/success', async (c) => {
                 <dt class="text-muted-foreground">Status</dt>
                 <dd>
                   {depositStatus === 'succeeded' ? (
-                    <Badge variant="success">received</Badge>
+                    <Badge variant="success">
+                      received · awaiting therapist confirmation
+                    </Badge>
                   ) : depositStatus === 'pending_webhook' ? (
-                    <Badge variant="secondary">received · syncing</Badge>
+                    <Badge variant="secondary">
+                      received · awaiting therapist confirmation
+                    </Badge>
                   ) : depositStatus === 'failed' ? (
                     <Badge variant="destructive">failed</Badge>
                   ) : (
