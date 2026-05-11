@@ -258,7 +258,7 @@ publicConsentsRoute.get('/:token', async (c) => {
 
   return c.html(
     <Layout title="Your retreat - Intensive Therapy Retreats">
-      <ClientShell>
+      <ClientShell width="xl">
         <h1 class="text-2xl font-semibold tracking-tight mb-2">Hi {ctx.clientFirstName},</h1>
         <p class="text-muted-foreground mb-6">
           Your therapist is <strong class="text-foreground">{ctx.therapistFullName}</strong>.

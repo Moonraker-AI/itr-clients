@@ -191,6 +191,18 @@
   * {
     @apply border-border outline-ring/50;
   }
+  /* Hint browser to render native form controls (checkbox, radio, range,
+     scrollbars, date pickers) in the right theme. Without this, Brave +
+     Chromium fall back to the OS preference, which on a dark-OS laptop
+     paints a dark unchecked checkbox in our light theme - reads as a
+     solid black square on cream. */
+  html {
+    color-scheme: light;
+    accent-color: var(--primary);
+  }
+  html.dark {
+    color-scheme: dark;
+  }
   body {
     @apply bg-background text-foreground font-sans;
   }
