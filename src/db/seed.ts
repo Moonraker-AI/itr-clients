@@ -94,7 +94,11 @@ const THERAPISTS: TherapistSeed[] = [
     kairEligible: true,
     kairFullDayCents: 185_000,
     kairHalfDayCents: 100_000,
-    stripeConnectAccountId: 'acct_1JxjLSDGT6bz5bfX',
+    // No stripeConnectAccountId - Bambi owns ITR and her Stripe
+    // merchant account IS the platform. A destination charge with
+    // destination=platform is rejected by Stripe, so her retreats
+    // process as direct charges. Net effect is identical: 100% of
+    // funds land in the platform account, which is Bambi's account.
     therapistPayoutPct: '100',
   },
   {
