@@ -23,7 +23,12 @@ import { log } from './phi-redactor.js';
 
 const GMAIL_SEND_SCOPE = 'https://www.googleapis.com/auth/gmail.send';
 const GMAIL_READONLY_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
-const SUBJECT_USER = 'clients@intensivetherapyretreat.com';
+// Workspace user the SA impersonates via domain-wide delegation. Must be a
+// real mailbox in the Workspace AND the SA's client ID must be authorized
+// for the gmail.send scope against this user in the Workspace admin
+// console. Switched clients@ -> support@ in v0.28.20 because clients@ was
+// never DWD-authorized; support@ already is.
+const SUBJECT_USER = 'support@intensivetherapyretreat.com';
 
 /**
  * Domain we use as the right-hand side of generated Message-ID headers.
