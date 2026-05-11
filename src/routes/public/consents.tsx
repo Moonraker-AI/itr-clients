@@ -29,6 +29,7 @@ import {
 } from '../../db/schema.js';
 import {
   getTemplate,
+  sortRequiredConsents,
   substitute,
   type RequiredField as TemplateRequiredField,
 } from '../../lib/consent-templates.js';
@@ -143,13 +144,15 @@ publicConsentsRoute.get('/:token', async (c) => {
     .where(eq(consentSignatures.retreatId, ctx.retreatId));
   const signedSet = new Set(signed.map((s) => s.templateId));
 
-  const allItems = required.map((r) => ({
-    name: r.name,
-    title: getTemplate(r.name).meta.title,
-    requiresSignature: r.requiresSignature,
-    surface: r.surface,
-    signed: signedSet.has(r.templateId),
-  }));
+  const allItems = sortRequiredConsents(
+    required.map((r) => ({
+      name: r.name,
+      title: getTemplate(r.name).meta.title,
+      requiresSignature: r.requiresSignature,
+      surface: r.surface,
+      signed: signedSet.has(r.templateId),
+    })),
+  );
   // Split by surface. Signature items render in the "Required documents"
   // card; portal_resource items live on /c/[token]/resources and surface
   // here as a separate "Program resources" card once the signing flow has
@@ -261,6 +264,20 @@ publicConsentsRoute.get('/:token', async (c) => {
     <Layout title="Your retreat - Intensive Therapy Retreats">
       <ClientShell width="xl">
         <h1 class="text-2xl font-semibold tracking-tight mb-2">Hi {ctx.clientFirstName},</h1>
+        <p class="text-base mb-3">
+          Thanks so much for booking a retreat! We look forward to sharing a
+          transformational experience with you. Below you will find important
+          documents for your review. Please follow the instructions and
+          complete all forms so we can get your retreat booking confirmed.
+          Don't hesitate to reach out to{' '}
+          <a
+            href="mailto:support@intensivetherapyretreat.com"
+            class="text-primary underline"
+          >
+            support@intensivetherapyretreat.com
+          </a>{' '}
+          with any questions!
+        </p>
         <p class="text-muted-foreground mb-6">
           Your therapist is <strong class="text-foreground">{ctx.therapistFullName}</strong>.
         </p>

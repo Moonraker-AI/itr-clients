@@ -283,3 +283,31 @@ export async function syncConsentTemplatesToDb(): Promise<
   }
   return out;
 }
+
+/**
+ * Templates that should always render at the bottom of the Required
+ * consents list on /admin/clients/<id> and the client portal dashboard,
+ * in this exact order. They're KAIR informational pieces (no signature)
+ * and ops asked for a stable trailing position so clients always see
+ * Pre / After / Resources in flow order regardless of alphabetical sort.
+ */
+export const KAIR_INFO_BOTTOM_ORDER = [
+  'kair-pre-program',
+  'kair-after-program',
+  'kair-resources',
+] as const;
+
+/**
+ * Stable sort that puts the KAIR_INFO_BOTTOM_ORDER templates last in the
+ * specified order; everything else falls back to alphabetical by name.
+ */
+export function sortRequiredConsents<T extends { name: string }>(items: T[]): T[] {
+  return [...items].sort((a, b) => {
+    const ai = (KAIR_INFO_BOTTOM_ORDER as readonly string[]).indexOf(a.name);
+    const bi = (KAIR_INFO_BOTTOM_ORDER as readonly string[]).indexOf(b.name);
+    if (ai !== -1 && bi !== -1) return ai - bi;
+    if (ai !== -1) return 1;
+    if (bi !== -1) return -1;
+    return a.name.localeCompare(b.name);
+  });
+}

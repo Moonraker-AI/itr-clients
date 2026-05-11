@@ -3,11 +3,11 @@ name: kair-resources
 version: 1
 requires_signature: false
 surface: portal_resource
-title: "Psychedelic Integration — Free Online Peer Support Resources"
+title: "Psychedelic Integration - Free Online Peer Support Resources"
 required_fields: []
 ---
 
-# Psychedelic Integration — Free Online Peer Support Resources
+# Psychedelic Integration - Free Online Peer Support Resources
 
 ## 🛑 IMPORTANT DISCLAIMER: Not Medical or Legal Advice 🛑
 
@@ -23,7 +23,7 @@ This document focuses on free and community-based online options (peer support, 
 
 ## Purpose
 
-A curated, practical list of free (or donation-based/free-to-attend) online groups, communities, hotlines, and resources people commonly use to integrate psychedelic therapy or personal psychedelic experiences. This list is not exhaustive — the psychedelic community is large and constantly changing — but it collects active, reputable gatherings and tools you can use immediately.
+A curated, practical list of free (or donation-based/free-to-attend) online groups, communities, hotlines, and resources people commonly use to integrate psychedelic therapy or personal psychedelic experiences. This list is not exhaustive - the psychedelic community is large and constantly changing - but it collects active, reputable gatherings and tools you can use immediately.
 
 ## Quick-start (If You're in Distress Right Now)
 
@@ -41,20 +41,20 @@ If your experience feels overwhelming but not life-threatening, consider contact
 
 ## 🤝 Free or Donation-Based Online Integration Circles (Peer Groups)
 
-These are community-led circles where people share and reflect on experiences. They are **peer support** and are **not group therapy**. Some ask for donations or are sliding-scale; many allow free participation when capacity allows — **check each listing** for the most current schedule and registration rules.
+These are community-led circles where people share and reflect on experiences. They are **peer support** and are **not group therapy**. Some ask for donations or are sliding-scale; many allow free participation when capacity allows - **check each listing** for the most current schedule and registration rules.
 
 | Group Name | Primary Focus / Type | Cost | Contact / Link |
 |---|---|---|---|
-| CIT Clinics — Community Integration | KAP-Focused. General integration open to all. | Free | CIT Clinics community page |
-| CIT Clinics — Women's Integration | KAP-Focused. Peer support group for women. | Free | CIT Clinics women's page |
+| CIT Clinics - Community Integration | KAP-Focused. General integration open to all. | Free | CIT Clinics community page |
+| CIT Clinics - Women's Integration | KAP-Focused. Peer support group for women. | Free | CIT Clinics women's page |
 | Isha Health Ketamine Integration Circle | KAP-Focused. Community circle to process ketamine experiences (bi-weekly). | Free | Search "Isha Health Meetup group" |
 | Tam Integration Circles | General, Women's, Art, BIPOC specific circles (various focus areas). | Donation / Sliding Scale | Search "Tam Integration" or via Psychedelic.Support |
-| Fireside Project — Integration Circles | General/All Experiences. Scheduled community sharing circles (check site for events). | Free | firesideproject.org/events |
+| Fireside Project - Integration Circles | General/All Experiences. Scheduled community sharing circles (check site for events). | Free | firesideproject.org/events |
 | San Francisco Psychedelic Society | General integration focused on harm reduction (Virtual/Hybrid options). | Donation / Free | Psychedelic Society SF events |
 | Phoenix Psychedelic Society | Offers free, volunteer-run online monthly integration circles. | Free | Search "Phoenix Psychedelic Society Meetup" |
 | Heroic Hearts Project | Focused on Veterans; provides integration coaching and support. | Free / nonprofit | heroicheartproject.org |
-| The Spirit Nurse — Free Integration Circles | Monthly free virtual integration circles open to all. | Free | RSVP via their site: thespiritnurse.co |
-| Calliope Health — Psychedelic Integration Group | Monthly peer integration circle (Virtual + Hybrid format). | Free (registration required) | Search "Calliope Health integration" |
+| The Spirit Nurse - Free Integration Circles | Monthly free virtual integration circles open to all. | Free | RSVP via their site: thespiritnurse.co |
+| Calliope Health - Psychedelic Integration Group | Monthly peer integration circle (Virtual + Hybrid format). | Free (registration required) | Search "Calliope Health integration" |
 | Get-Free Learning Community | BIPOC Integration Circle. Monthly circle focused on intersectional social justice + healing. | Free | Search "Get-Free Learning Community BIPOC" |
 | Psychedelic Liberation Collective | QT/BIPOC focus. Decentralized group advocating for collective liberation. | Free | Search "Psychedelic Liberation Collective" |
 | Autistic Psychedelic Community | Neurodivergent peer support and co-learning gatherings. | Free | Search "Autistic Psychedelic Community" |
@@ -66,7 +66,7 @@ These are community-led circles where people share and reflect on experiences. T
 
 - **Mindleap App:** Virtual platform offering meditations, educational content, and often hosts free community-led integration circles.
 - **Public Discord Servers:** Look for servers with active moderators, clear rules, and harm-reduction channels (e.g., HowToUsePsychedelics / HTUP Discord hosts weekly integration circles).
-- **Reddit Communities:** r/PsychedelicTherapy, r/psychonaut, r/Psychedelics — useful for discussion, peer advice, and local meetup postings (moderation policies vary).
+- **Reddit Communities:** r/PsychedelicTherapy, r/psychonaut, r/Psychedelics - useful for discussion, peer advice, and local meetup postings (moderation policies vary).
 - **Erowid / Psychonaut Wiki:** Online encyclopedias providing reliable, non-judgmental information about psychoactive plants and related issues.
 - **Understory Wellness:** Monthly Psychedelic Integration Group. Register on-line. Participation is by donation to the Understory Equitable Access Fund.
 - **Psychedelic Support:** Offers community groups. [psychedelic.support](https://psychedelic.support/)
@@ -101,4 +101,4 @@ These are community-led circles where people share and reflect on experiences. T
 
 ## Sample Email / Message to Join a First Circle
 
-> Hi — I'm interested in joining the integration circle on DATE. I'm coming after a therapeutic psychedelic session and would like to participate as a listener first. Are there orientation materials or a confidentiality agreement I should review beforehand?
+> Hi - I'm interested in joining the integration circle on DATE. I'm coming after a therapeutic psychedelic session and would like to participate as a listener first. Are there orientation materials or a confidentiality agreement I should review beforehand?

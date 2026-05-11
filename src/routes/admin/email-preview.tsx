@@ -55,7 +55,7 @@ function sampleArgs(event: NotifyEvent, baseUrl: string): NotifyArgs {
       retreatId: SAMPLE_RETREAT_ID,
       clientEmail: 'sample@example.com',
       clientFirstName: 'Sample',
-      clientPortalUrl: `${baseUrl}/c/sample-token-0123456789abcdef/consents`,
+      clientPortalUrl: `${baseUrl}/c/sample-token-0123456789abcdef`,
     };
   }
   return {

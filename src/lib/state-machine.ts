@@ -209,7 +209,7 @@ export const transitions = {
       retreatId: args.retreatId,
       clientEmail: client.email,
       clientFirstName: client.firstName,
-      clientPortalUrl: `${publicBaseUrl()}/c/${result.client_token}/consents`,
+      clientPortalUrl: `${publicBaseUrl()}/c/${result.client_token}`,
     });
 
     log.info('state_transition', {
@@ -268,7 +268,7 @@ export const transitions = {
       retreatId: args.retreatId,
       clientEmail: client.email,
       clientFirstName: client.firstName,
-      clientPortalUrl: `${publicBaseUrl()}/c/${r.clientToken}/consents`,
+      clientPortalUrl: `${publicBaseUrl()}/c/${r.clientToken}`,
     });
 
     log.info('consent_package_resent', { retreatId: args.retreatId });

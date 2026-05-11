@@ -95,8 +95,8 @@ export interface Composed {
  * frozen hex snapshot and updated alongside theme bumps.
  */
 const EMAIL_BRAND = {
-  frame: '#3a5e60',          // dark teal - top + bottom bars
-  frameText: '#f0ede2',      // cream-on-teal text in bars
+  frame: '#1c2326',          // dark gray - matches /admin dark-mode bg
+  frameText: '#f0ede2',      // cream-on-gray text in bars
   contentBg: '#faf9f4',      // cream content area
   contentText: '#2c3a3c',    // dark slate body text
   muted: '#6b7c7e',
