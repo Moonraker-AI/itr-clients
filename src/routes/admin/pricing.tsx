@@ -140,7 +140,7 @@ adminPricingRoute.get('/', async (c) => {
                       <Select
                         form={`t-${t.slug}`}
                         name="role"
-                        class="w-72 inline-block"
+                        class="w-72! inline-block"
                       >
                         {ROLES.map((r) => (
                           <option value={r} selected={r === t.role}>
