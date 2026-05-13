@@ -81,11 +81,11 @@ const THERAPISTS: TherapistSeed[] = [
     email: 'amy@intensivetherapyretreat.com',
     role: 'therapist',
     locationSlug: 'northampton-ma',
-    fullDayCents: 155_000,
-    halfDayCents: 83_000,
+    fullDayCents: 160_000,
+    halfDayCents: 85_500,
     kairEligible: true,
-    kairFullDayCents: 185_000,
-    kairHalfDayCents: 100_000,
+    kairFullDayCents: 190_500,
+    kairHalfDayCents: 103_000,
     stripeConnectAccountId: 'acct_1M9ZMUD89kXLgstF',
   },
   {
@@ -94,16 +94,16 @@ const THERAPISTS: TherapistSeed[] = [
     email: 'bambi@intensivetherapyretreat.com',
     role: 'admin',
     locationSlug: 'northampton-ma',
-    fullDayCents: 155_000,
-    halfDayCents: 83_000,
+    fullDayCents: 160_000,
+    halfDayCents: 85_500,
     kairEligible: true,
-    kairFullDayCents: 185_000,
-    kairHalfDayCents: 100_000,
-    // v0.28.23: Bambi's personal LLC Connect account - separate Stripe
-    // account from the ITR LLC platform, so destination charges land
-    // here cleanly (no self-destination collision). 100% payout split
-    // means she receives the full post-fee amount.
-    stripeConnectAccountId: 'acct_1MPUUzGIIhIW4w3n',
+    kairFullDayCents: 190_500,
+    kairHalfDayCents: 103_000,
+    // Bambi's personal LLC Connect account - separate Stripe account
+    // from the ITR LLC platform, so destination charges land here
+    // cleanly (no self-destination collision). 100% payout split means
+    // she receives the full post-fee amount.
+    stripeConnectAccountId: 'acct_1TVvO2RmP55dIJWp',
     therapistPayoutPct: '100',
   },
   {
@@ -112,7 +112,7 @@ const THERAPISTS: TherapistSeed[] = [
     email: 'jordan@intensivetherapyretreat.com',
     role: 'therapist',
     locationSlug: 'auburn-ca',
-    fullDayCents: 200_000,
+    fullDayCents: 206_000,
     halfDayCents: null,
     stripeConnectAccountId: 'acct_1MC6ZrD3Yl7yuaca',
   },
@@ -122,11 +122,11 @@ const THERAPISTS: TherapistSeed[] = [
     email: 'nikki@intensivetherapyretreat.com',
     role: 'therapist',
     locationSlug: 'northampton-ma',
-    fullDayCents: 155_000,
-    halfDayCents: 83_000,
+    fullDayCents: 160_000,
+    halfDayCents: 85_500,
     kairEligible: true,
-    kairFullDayCents: 185_000,
-    kairHalfDayCents: 100_000,
+    kairFullDayCents: 190_500,
+    kairHalfDayCents: 103_000,
     stripeConnectAccountId: 'acct_1M9X2mDFNkk4EY1n',
   },
   {
@@ -147,11 +147,11 @@ const THERAPISTS: TherapistSeed[] = [
     email: 'vickie@intensivetherapyretreat.com',
     role: 'therapist',
     locationSlug: 'east-granby-ct',
-    fullDayCents: 155_000,
-    halfDayCents: 83_000,
+    fullDayCents: 160_000,
+    halfDayCents: 85_500,
     kairEligible: true,
-    kairFullDayCents: 185_000,
-    kairHalfDayCents: 100_000,
+    kairFullDayCents: 190_500,
+    kairHalfDayCents: 103_000,
     stripeConnectAccountId: 'acct_1MC55tD6y6uH6AtZ',
   },
 ];
