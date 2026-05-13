@@ -99,11 +99,11 @@ const THERAPISTS: TherapistSeed[] = [
     kairEligible: true,
     kairFullDayCents: 185_000,
     kairHalfDayCents: 100_000,
-    // v0.28.23: Bambi's personal LLC Connect account - separate Stripe
-    // account from the ITR LLC platform, so destination charges land
-    // here cleanly (no self-destination collision). 100% payout split
-    // means she receives the full post-fee amount.
-    stripeConnectAccountId: 'acct_1MPUUzGIIhIW4w3n',
+    // Bambi's personal LLC Connect account - separate Stripe account
+    // from the ITR LLC platform, so destination charges land here
+    // cleanly (no self-destination collision). 100% payout split means
+    // she receives the full post-fee amount.
+    stripeConnectAccountId: 'acct_1TVvO2RmP55dIJWp',
     therapistPayoutPct: '100',
   },
   {
