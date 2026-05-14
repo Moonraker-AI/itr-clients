@@ -221,18 +221,17 @@ adminDashboardRoute.get('/', async (c) => {
         <Card class="mb-6">
           <CardContent class="pt-6">
             <form method="get" class="flex flex-wrap items-end gap-3">
-              <div class="space-y-1.5">
+              <div class="space-y-1.5 w-full sm:w-auto sm:min-w-[220px]">
                 <label class="text-xs text-muted-foreground">Search</label>
                 <Input
                   name="q"
                   value={qFilter}
                   placeholder="client name or email"
-                  class="min-w-[220px]"
                 />
               </div>
-              <div class="space-y-1.5">
+              <div class="space-y-1.5 w-full sm:w-auto sm:min-w-[180px]">
                 <label class="text-xs text-muted-foreground">State</label>
-                <Select name="state" class="min-w-[180px]">
+                <Select name="state">
                   <option value="">all</option>
                   {RETREAT_STATES.map((s) => (
                     <option value={s} selected={s === stateFilter}>
@@ -241,9 +240,9 @@ adminDashboardRoute.get('/', async (c) => {
                   ))}
                 </Select>
               </div>
-              <div class="space-y-1.5">
+              <div class="space-y-1.5 w-full sm:w-auto sm:min-w-[200px]">
                 <label class="text-xs text-muted-foreground">Therapist</label>
-                <Select name="therapist" class="min-w-[200px]">
+                <Select name="therapist">
                   <option value="">all</option>
                   {therapistRows.map((t) => (
                     <option value={t.id} selected={t.id === therapistFilter}>

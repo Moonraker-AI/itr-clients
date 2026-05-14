@@ -94,9 +94,9 @@ adminEmailPreviewRoute.get('/', async (c) => {
         <Card class="mb-6">
           <CardContent class="pt-6">
             <form method="get" class="flex flex-wrap items-end gap-3">
-              <div class="space-y-1.5">
+              <div class="space-y-1.5 w-full sm:w-auto sm:min-w-[280px]">
                 <label class="text-xs text-muted-foreground">Event</label>
-                <Select name="event" class="min-w-[280px]">
+                <Select name="event">
                   {EVENTS.map((e) => (
                     <option value={e} selected={e === event}>
                       {e}

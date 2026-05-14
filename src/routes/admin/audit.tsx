@@ -275,7 +275,7 @@ adminAuditRoute.get('/', async (c) => {
                       <Td>
                         <Badge variant={actorBadgeVariant(r.actorType)}>{r.actorType}</Badge>
                       </Td>
-                      <Td class="font-mono text-xs">{r.eventType}</Td>
+                      <Td class="font-mono text-xs break-all">{r.eventType}</Td>
                       <Td>
                         {r.retreatId ? (
                           <a
