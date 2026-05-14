@@ -64,11 +64,11 @@ adminLoginRoute.get('/login', (c) => {
               <code class="font-mono text-xs">AUTH_ENABLED</code> is not set on this Cloud Run service.
             </CardDescription>
           </CardHeader>
-          <CardContent class="space-y-3 text-sm">
+          <CardContent class="space-y-3 text-sm break-words">
             <p>
               Admin pages currently rely on Cloud Run IAM auth and a synthetic admin context. Set{' '}
-              <code class="font-mono text-xs">AUTH_ENABLED=1</code> + bind{' '}
-              <code class="font-mono text-xs">FIREBASE_API_KEY/AUTH_DOMAIN/PROJECT_ID</code> to enable
+              <code class="font-mono text-xs break-all">AUTH_ENABLED=1</code> + bind{' '}
+              <code class="font-mono text-xs break-all">FIREBASE_API_KEY/AUTH_DOMAIN/PROJECT_ID</code> to enable
               Identity Platform sign-in.
             </p>
             <p>
@@ -87,11 +87,11 @@ adminLoginRoute.get('/login', (c) => {
       <CenteredShell title="Login - config pending">
         <Alert variant="destructive">
           <AlertTitle>Setup pending</AlertTitle>
-          <AlertDescription>
+          <AlertDescription class="break-words">
             Firebase web config is incomplete on this revision. Bind{' '}
-            <code class="font-mono text-xs">FIREBASE_API_KEY</code>,{' '}
-            <code class="font-mono text-xs">FIREBASE_AUTH_DOMAIN</code>, and{' '}
-            <code class="font-mono text-xs">FIREBASE_PROJECT_ID</code> via the deploy workflow.
+            <code class="font-mono text-xs break-all">FIREBASE_API_KEY</code>,{' '}
+            <code class="font-mono text-xs break-all">FIREBASE_AUTH_DOMAIN</code>, and{' '}
+            <code class="font-mono text-xs break-all">FIREBASE_PROJECT_ID</code> via the deploy workflow.
           </AlertDescription>
         </Alert>
       </CenteredShell>,

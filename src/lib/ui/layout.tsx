@@ -50,7 +50,7 @@ export const Layout: FC<LayoutProps> = ({ title, head, theme, scripts, children 
         <script src={`/static/js/browser-error.js${STATIC_V_QS}`} defer></script>
         {head}
       </head>
-      <body class="min-h-screen bg-background text-foreground antialiased">
+      <body class="min-h-screen bg-background text-foreground antialiased overflow-x-hidden">
         <a
           href="#main"
           class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:bg-card focus:text-foreground focus:px-3 focus:py-2 focus:shadow-md focus:ring-2 focus:ring-ring"
