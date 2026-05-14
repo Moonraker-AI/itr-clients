@@ -1,5 +1,10 @@
 // HTML5 canvas signature pad for /c/:token/consents.
 // Reads from #sig-pad + #sig-clear; writes data URL into #signature_data_url.
+//
+// Canvas CSS width is responsive (w-full max-w-md). Backing buffer is sized
+// to clientWidth × devicePixelRatio so ink stays crisp at any viewport.
+// Resize (rotate / window flip) re-inits the buffer and clears any in-progress
+// stroke - acceptable since signature isn't submitted yet at that point.
 (function () {
   var c = document.getElementById('sig-pad');
   if (!c) return;
@@ -7,9 +12,26 @@
   var hidden = document.getElementById('signature_data_url');
   var drawing = false;
   var last = null;
-  ctx.lineWidth = 2;
-  ctx.lineCap = 'round';
-  ctx.strokeStyle = '#111';
+
+  function applyStrokeStyle() {
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#111';
+  }
+
+  function resizeCanvas() {
+    var dpr = window.devicePixelRatio || 1;
+    var w = c.clientWidth;
+    var h = c.clientHeight;
+    if (!w || !h) return;
+    c.width = Math.round(w * dpr);
+    c.height = Math.round(h * dpr);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
+    applyStrokeStyle();
+    hidden.value = '';
+  }
+
   function pos(e) {
     var r = c.getBoundingClientRect();
     var t = e.touches ? e.touches[0] : e;
@@ -41,8 +63,21 @@
   c.addEventListener('touchstart', start);
   c.addEventListener('touchmove', move);
   c.addEventListener('touchend', end);
+
   document.getElementById('sig-clear').addEventListener('click', function () {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, c.width, c.height);
+    var dpr = window.devicePixelRatio || 1;
+    ctx.scale(dpr, dpr);
+    applyStrokeStyle();
     hidden.value = '';
   });
+
+  var resizeTimer = null;
+  window.addEventListener('resize', function () {
+    if (resizeTimer) clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(resizeCanvas, 150);
+  });
+
+  resizeCanvas();
 })();
