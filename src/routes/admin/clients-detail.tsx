@@ -57,11 +57,11 @@ const SUMMARY_CLASS =
 
 function DefList({ rows }: { rows: Array<[string, unknown]> }) {
   return (
-    <dl class="grid grid-cols-[180px_1fr] gap-y-2 gap-x-4 text-sm">
+    <dl class="grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-y-2 sm:gap-y-2 gap-x-4 text-sm">
       {rows.map(([label, value]) => (
         <>
           <dt class="text-muted-foreground">{label}</dt>
-          <dd>{value}</dd>
+          <dd class="break-words">{value}</dd>
         </>
       ))}
     </dl>
@@ -386,7 +386,7 @@ adminClientsDetailRoute.get('/:id', async (c) => {
               <p class="mb-2">
                 Auto-retry runs at 24h then 72h cadence via the retry cron. Client recovery links:
               </p>
-              <ul class="space-y-1 text-xs font-mono">
+              <ul class="space-y-1 text-xs font-mono break-all">
                 <li>
                   Update saved card (Stripe portal): {publicBase}/c/{row.clientToken}/update-payment
                 </li>
@@ -474,7 +474,7 @@ adminClientsDetailRoute.get('/:id', async (c) => {
                         {a.createdAt.toISOString()}
                       </Td>
                       <Td>
-                        <code class="font-mono text-xs">{a.eventType}</code>
+                        <code class="font-mono text-xs break-all">{a.eventType}</code>
                       </Td>
                       <Td class="text-sm">{a.actorType}</Td>
                       <Td>
@@ -559,12 +559,12 @@ adminClientsDetailRoute.get('/:id', async (c) => {
                                 href={piUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                class="font-mono text-xs underline hover:text-primary"
+                                class="font-mono text-xs break-all underline hover:text-primary"
                               >
                                 {p.stripePaymentIntentId} ↗
                               </a>
                             ) : (
-                              <code class="font-mono text-xs text-muted-foreground">
+                              <code class="font-mono text-xs break-all text-muted-foreground">
                                 {p.stripePaymentIntentId ?? '-'}
                               </code>
                             )}
@@ -593,7 +593,7 @@ adminClientsDetailRoute.get('/:id', async (c) => {
                                   href={stripeTransferUrl(po.stripeTransferId)}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  class="font-mono text-xs underline hover:text-primary"
+                                  class="font-mono text-xs break-all underline hover:text-primary"
                                 >
                                   {po.stripeTransferId} ↗
                                 </a>
@@ -658,7 +658,7 @@ adminClientsDetailRoute.get('/:id', async (c) => {
                         )}
                       </Td>
                       <Td>
-                        <code class="font-mono text-xs">{e.messageId ?? ''}</code>
+                        <code class="font-mono text-xs break-all">{e.messageId ?? ''}</code>
                       </Td>
                     </Tr>
                   ))}
