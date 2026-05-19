@@ -68,7 +68,7 @@ export function captureError(
   opts: { service?: string } = {},
 ): void {
   const scrubbedCtx = redact(ctx) as Record<string, unknown>;
-  const message = formatErrorMessage(err);
+  const message = String(redact(formatErrorMessage(err)));
   const sc: ServiceContext = opts.service
     ? { ...serviceContext, service: opts.service }
     : serviceContext;
@@ -102,9 +102,9 @@ export async function flushErrorReporter(_timeoutMs = 2000): Promise<boolean> {
 function formatErrorMessage(err: unknown): string {
   if (err instanceof Error) {
     // `err.stack` contains "Name: message\n    at ..." which is exactly
-    // what Cloud Error Reporting wants. The redactor still runs on the
-    // ctx fields, but stack text is left as-is - frame paths + function
-    // names are not PHI by our boundary definition.
+    // what Cloud Error Reporting wants. The caller redacts the final
+    // stack string before emission so PHI in an error message or argument-
+    // rich browser stack cannot leave the app boundary.
     return err.stack ?? `${err.name}: ${err.message}`;
   }
   return typeof err === 'string' ? err : JSON.stringify(err);
