@@ -92,6 +92,25 @@ describe('POST /api/browser-error: happy path', () => {
     assert.ok(entry);
     assert.match(entry.message, /at handler \(foo\.js:5:5\)/);
   });
+
+  test('redacts PHI in browser-supplied message and stack', async () => {
+    const cap = captureStdout();
+    try {
+      await post({
+        msg: 'client alice@example.com failed',
+        stack:
+          'client alice@example.com failed\n' +
+          '    at handler (https://example.com/app.js:5:5)',
+      });
+    } finally {
+      cap.restore();
+    }
+    const entry = findReportedEvent(cap.lines);
+    assert.ok(entry);
+    assert.doesNotMatch(entry.message, /alice@example\.com/);
+    assert.match(entry.message, /\[REDACTED:phi]/);
+    assert.match(entry.message, /at handler/);
+  });
 });
 
 describe('POST /api/browser-error: hardening', () => {

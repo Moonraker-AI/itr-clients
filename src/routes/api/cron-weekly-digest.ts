@@ -35,7 +35,6 @@ import {
   emailLog,
   payments,
   retreats,
-  therapists,
 } from '../../db/schema.js';
 import { verifyCronSecret } from '../../lib/cron-auth.js';
 import { sendEmail } from '../../lib/gmail.js';
@@ -58,7 +57,6 @@ function esc(s: string): string {
 const ADMIN_ROLLUP_RECIPIENTS_DEFAULT = [
   'bambi@intensivetherapyretreat.com',
   'chris@intensivetherapyretreat.com',
-  'support@moonraker.ai',
 ];
 
 const STALE_THRESHOLD_DAYS = 7;
@@ -189,13 +187,8 @@ cronWeeklyDigestRoute.post('/weekly-digest', async (c) => {
       retreatId: retreats.id,
       state: retreats.state,
       updatedAt: retreats.updatedAt,
-      clientFirstName: clients.firstName,
-      clientLastName: clients.lastName,
-      therapistFullName: therapists.fullName,
     })
     .from(retreats)
-    .innerJoin(clients, eq(retreats.clientId, clients.id))
-    .innerJoin(therapists, eq(retreats.therapistId, therapists.id))
     .where(
       and(
         inArray(retreats.state, stalledStates),
@@ -211,7 +204,6 @@ cronWeeklyDigestRoute.post('/weekly-digest', async (c) => {
       retreatId: payments.retreatId,
       kind: payments.kind,
       failureCode: payments.failureCode,
-      failureMessage: payments.failureMessage,
       createdAt: payments.createdAt,
     })
     .from(payments)
@@ -222,10 +214,8 @@ cronWeeklyDigestRoute.post('/weekly-digest', async (c) => {
   const recentBounces = await db
     .select({
       retreatId: emailLog.retreatId,
-      recipient: emailLog.recipient,
       templateName: emailLog.templateName,
       bouncedAt: emailLog.bouncedAt,
-      bounceReason: emailLog.bounceReason,
     })
     .from(emailLog)
     .where(and(eq(emailLog.status, 'bounced'), gte(emailLog.sentAt, windowSince)))
@@ -244,7 +234,7 @@ cronWeeklyDigestRoute.post('/weekly-digest', async (c) => {
     : stuck
         .map(
           (s) =>
-            `  - ${s.state}: ${s.clientFirstName} ${s.clientLastName} (therapist ${s.therapistFullName}) - last touch ${s.updatedAt.toISOString().slice(0, 10)} → ${adminUrlForRetreat(s.retreatId)}`,
+            `  - ${s.state}: ${s.retreatId} - last touch ${s.updatedAt.toISOString().slice(0, 10)} -> ${adminUrlForRetreat(s.retreatId)}`,
         )
         .join('\n');
   const failuresList = failedPayments.length === 0
@@ -252,7 +242,7 @@ cronWeeklyDigestRoute.post('/weekly-digest', async (c) => {
     : failedPayments
         .map(
           (p) =>
-            `  - ${p.kind} ${p.failureCode ?? '?'}${p.failureMessage ? `: ${p.failureMessage}` : ''} → ${adminUrlForRetreat(p.retreatId ?? '')}`,
+            `  - ${p.kind} ${p.failureCode ?? '?'} -> ${adminUrlForRetreat(p.retreatId ?? '')}`,
         )
         .join('\n');
   const bouncesList = recentBounces.length === 0
@@ -260,7 +250,7 @@ cronWeeklyDigestRoute.post('/weekly-digest', async (c) => {
     : recentBounces
         .map(
           (b) =>
-            `  - ${b.templateName} → ${b.recipient} bounced (${b.bounceReason ?? 'unknown'}) on ${b.bouncedAt?.toISOString().slice(0, 10) ?? '?'} → ${b.retreatId ? adminUrlForRetreat(b.retreatId) : '(no retreat link)'}`,
+            `  - ${b.templateName} bounced on ${b.bouncedAt?.toISOString().slice(0, 10) ?? '?'} -> ${b.retreatId ? adminUrlForRetreat(b.retreatId) : '(no retreat link)'}`,
         )
         .join('\n');
 

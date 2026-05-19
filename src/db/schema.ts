@@ -19,6 +19,7 @@ import { sql } from 'drizzle-orm';
 import {
   boolean,
   date,
+  index,
   integer,
   jsonb,
   numeric,
@@ -264,6 +265,15 @@ export const retreats = pgTable(
   },
   (t) => ({
     clientTokenIdx: uniqueIndex('retreats_client_token_idx').on(t.clientToken),
+    stateIdx: index('retreats_state_idx').on(t.state),
+    therapistStateUpdatedIdx: index('retreats_therapist_state_updated_idx').on(
+      t.therapistId,
+      t.state,
+      t.updatedAt,
+    ),
+    scheduledStartIdx: index('retreats_state_scheduled_start_idx')
+      .on(t.state, t.scheduledStartDate)
+      .where(sql`${t.state} = 'scheduled'`),
   }),
 );
 
@@ -335,45 +345,63 @@ export const retreatRequiredConsents = pgTable(
   }),
 );
 
-export const consentSignatures = pgTable('consent_signatures', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  retreatId: uuid('retreat_id')
-    .notNull()
-    .references(() => retreats.id, { onDelete: 'cascade' }),
-  templateId: uuid('template_id')
-    .notNull()
-    .references(() => consentTemplates.id),
-  // PHI: signed name + intake answers
-  signedName: text('signed_name').notNull(),
-  signedAt: timestamp('signed_at', { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  ipAddress: text('ip_address'),
-  userAgent: text('user_agent'),
-  /**
-   * Captured intake answers (gender, pronouns, comms permissions, NPP-version
-   * acknowledgment, signature image data URL, etc.) keyed by template's
-   * required_fields. Treated as PHI.
-   */
-  evidenceBlob: jsonb('evidence_blob').notNull().default(sql`'{}'::jsonb`),
-  // gs:// path inside itr-consents-{env} bucket. Bucket is CMEK-bound.
-  pdfStoragePath: text('pdf_storage_path'),
-});
-
-export const auditEvents = pgTable('audit_events', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  retreatId: uuid('retreat_id').references(() => retreats.id, {
-    onDelete: 'cascade',
+export const consentSignatures = pgTable(
+  'consent_signatures',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    retreatId: uuid('retreat_id')
+      .notNull()
+      .references(() => retreats.id, { onDelete: 'cascade' }),
+    templateId: uuid('template_id')
+      .notNull()
+      .references(() => consentTemplates.id),
+    // PHI: signed name + intake answers
+    signedName: text('signed_name').notNull(),
+    signedAt: timestamp('signed_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    ipAddress: text('ip_address'),
+    userAgent: text('user_agent'),
+    /**
+     * Captured intake answers (gender, pronouns, comms permissions, NPP-version
+     * acknowledgment, signature image data URL, etc.) keyed by template's
+     * required_fields. Treated as PHI.
+     */
+    evidenceBlob: jsonb('evidence_blob').notNull().default(sql`'{}'::jsonb`),
+    // gs:// path inside itr-consents-{env} bucket. Bucket is CMEK-bound.
+    pdfStoragePath: text('pdf_storage_path'),
+  },
+  (t) => ({
+    retreatTemplateIdx: index('consent_signatures_retreat_template_idx').on(
+      t.retreatId,
+      t.templateId,
+    ),
   }),
-  actorType: actorType('actor_type').notNull(),
-  // Therapist UUID, retreat client_token, stripe event id, or null for system.
-  actorId: text('actor_id'),
-  eventType: text('event_type').notNull(),
-  payload: jsonb('payload').notNull().default(sql`'{}'::jsonb`),
-  createdAt: timestamp('created_at', { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+);
+
+export const auditEvents = pgTable(
+  'audit_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    retreatId: uuid('retreat_id').references(() => retreats.id, {
+      onDelete: 'cascade',
+    }),
+    actorType: actorType('actor_type').notNull(),
+    // Therapist UUID, retreat client_token, stripe event id, or null for system.
+    actorId: text('actor_id'),
+    eventType: text('event_type').notNull(),
+    payload: jsonb('payload').notNull().default(sql`'{}'::jsonb`),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    retreatCreatedIdx: index('audit_events_retreat_created_idx').on(
+      t.retreatId,
+      t.createdAt,
+    ),
+  }),
+);
 
 /**
  * email_log - outbound notification audit trail.
@@ -395,19 +423,28 @@ export const auditEvents = pgTable('audit_events', {
  * pass to Gmail in the raw payload. The cron-scan-bounces job parses inbound
  * DSN messages and matches their In-Reply-To header against this column.
  */
-export const emailLog = pgTable('email_log', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  retreatId: uuid('retreat_id').references(() => retreats.id, {
-    onDelete: 'set null',
+export const emailLog = pgTable(
+  'email_log',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    retreatId: uuid('retreat_id').references(() => retreats.id, {
+      onDelete: 'set null',
+    }),
+    recipient: text('recipient').notNull(),
+    templateName: text('template_name').notNull(),
+    messageId: text('message_id'),
+    status: emailStatus('status').notNull().default('sent'),
+    sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
+    bouncedAt: timestamp('bounced_at', { withTimezone: true }),
+    bounceReason: text('bounce_reason'),
+  },
+  (t) => ({
+    retreatSentIdx: index('email_log_retreat_sent_idx').on(t.retreatId, t.sentAt),
+    messageStatusIdx: index('email_log_message_status_idx')
+      .on(t.messageId, t.status)
+      .where(sql`${t.messageId} IS NOT NULL`),
   }),
-  recipient: text('recipient').notNull(),
-  templateName: text('template_name').notNull(),
-  messageId: text('message_id'),
-  status: emailStatus('status').notNull().default('sent'),
-  sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
-  bouncedAt: timestamp('bounced_at', { withTimezone: true }),
-  bounceReason: text('bounce_reason'),
-});
+);
 
 /**
  * notify(event_type, retreat_id) → fan out to these recipients. Editable in
@@ -495,6 +532,11 @@ export const payments = pgTable(
     paymentIntentIdx: uniqueIndex('payments_stripe_payment_intent_idx')
       .on(t.stripePaymentIntentId)
       .where(sql`${t.kind} <> 'refund'`),
+    retreatKindCreatedIdx: index('payments_retreat_kind_created_idx').on(
+      t.retreatId,
+      t.kind,
+      t.createdAt,
+    ),
   }),
 );
 

@@ -77,6 +77,24 @@ describe('error-reporter: captureError JSON shape', () => {
     assert.match(entry.message, /\n\s+at /);
   });
 
+  test('redacts PHI in error message and stack before emission', () => {
+    const err = new Error('contact client@example.com at 555-123-4567');
+    err.stack =
+      'Error: contact client@example.com at 555-123-4567\n' +
+      '    at handler (/app/src/server.ts:1:2)';
+    const cap = captureStdout();
+    try {
+      captureError(err);
+    } finally {
+      cap.restore();
+    }
+    const entry = parse(cap.lines[0]!);
+    assert.doesNotMatch(entry.message, /client@example\.com/);
+    assert.doesNotMatch(entry.message, /555-123-4567/);
+    assert.match(entry.message, /\[REDACTED:phi]/);
+    assert.match(entry.message, /\n\s+at handler/);
+  });
+
   test('non-Error throwables become string messages', () => {
     const cap = captureStdout();
     try {
