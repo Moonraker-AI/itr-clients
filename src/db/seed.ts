@@ -54,7 +54,7 @@ type TherapistSeed = {
   // Stripe Connect for the future payout pipeline (Phase C, v0.25+).
   // NULL on Ross (paid directly) and Chris (platform owner).
   stripeConnectAccountId?: string;
-  // 0..100 numeric string. Default 80 (matches the spreadsheet baseline);
+  // 0..100 numeric string. Default 60 (matches the active rev-share);
   // Bambi is the only exception today at 100. Stored as string so the
   // numeric column round-trips exactly.
   therapistPayoutPct?: string;
@@ -87,6 +87,16 @@ const THERAPISTS: TherapistSeed[] = [
     kairFullDayCents: 190_500,
     kairHalfDayCents: 103_000,
     stripeConnectAccountId: 'acct_1M9ZMUD89kXLgstF',
+  },
+  {
+    slug: 'hannah-tosi',
+    fullName: 'Hannah Tosi',
+    email: 'hannah@intensivetherapyretreat.com',
+    role: 'therapist',
+    locationSlug: 'northampton-ma',
+    fullDayCents: 160_000,
+    halfDayCents: 85_500,
+    stripeConnectAccountId: 'acct_1M9snERmtU1QaQqW',
   },
   {
     slug: 'bambi-rattner',
@@ -188,7 +198,7 @@ async function main() {
         kairFullDayCents: t.kairFullDayCents ?? null,
         kairHalfDayCents: t.kairHalfDayCents ?? null,
         stripeConnectAccountId: t.stripeConnectAccountId ?? null,
-        therapistPayoutPct: t.therapistPayoutPct ?? '80',
+        therapistPayoutPct: t.therapistPayoutPct ?? '60',
       };
       await db
         .insert(therapists)
