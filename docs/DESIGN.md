@@ -142,12 +142,13 @@ Per published rates: ACH is the standard price; credit card is the same rate wit
 
 | Therapist | Full Day (ACH) | Half Day (ACH) | Location |
 |---|---|---|---|
-| Amy Shuman | $1,550 | $830 | Northampton, MA |
-| Bambi Rattner | $1,550 | $830 | Northampton, MA |
-| Jordan Hamilton | $2,000 | N/A | Auburn, CA |
-| Nikki Gamache | $1,550 | $830 | Northampton, MA |
+| Amy Shuman | $1,600 | $855 | Northampton, MA |
+| Bambi Rattner | $1,600 | $855 | Northampton, MA |
+| Hannah Tosi | $1,600 | $855 | Northampton, MA |
+| Jordan Hamilton | $2,060 | N/A | Auburn, CA |
+| Nikki Gamache | $1,600 | $855 | Northampton, MA |
 | Ross Hackerson | $2,400 | N/A | Northampton, MA |
-| Vickie Alston | $1,550 | $830 | East Granby, CT |
+| Vickie Alston | $1,600 | $855 | East Granby, CT |
 
 ### Snapshot rule
 
