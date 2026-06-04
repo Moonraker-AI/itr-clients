@@ -38,6 +38,7 @@ import {
 } from '../../db/schema.js';
 import { verifyCronSecret } from '../../lib/cron-auth.js';
 import { sendEmail } from '../../lib/gmail.js';
+import { emailButton, wrapEmailHtml } from '../../lib/notifications.js';
 import { log } from '../../lib/phi-redactor.js';
 
 export const cronWeeklyDigestRoute = new Hono();
@@ -123,10 +124,13 @@ cronWeeklyDigestRoute.post('/weekly-digest', async (c) => {
       `Pick up where you left off:\n${portalUrl}\n\n` +
       `If you have questions, reply to this email and our team will be in touch.\n`;
     const html =
-      `<p>Hi ${esc(r.clientFirstName)},</p>` +
-      `<p>This is a friendly reminder that you still need to ${esc(nextLabel)}.</p>` +
-      `<p>Pick up where you left off: <a href="${esc(portalUrl)}">${esc(portalUrl)}</a></p>` +
-      `<p>If you have questions, reply to this email and our team will be in touch.</p>`;
+      wrapEmailHtml(
+        `<p style="margin:0 0 14px 0;">Hi ${esc(r.clientFirstName)},</p>` +
+          `<p style="margin:0 0 14px 0;">This is a friendly reminder that you still need to ${esc(nextLabel)}.</p>` +
+          emailButton(portalUrl, 'Pick up where you left off') +
+          `<p style="margin:0;">If you have questions, reply to this email and our team will be in touch.</p>`,
+        { preheader: 'A quick reminder from Intensive Therapy Retreats.' },
+      );
 
     try {
       const res = await sendEmail({

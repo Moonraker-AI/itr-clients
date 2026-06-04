@@ -211,6 +211,23 @@ function emailLink(href: string): string {
 }
 
 /**
+ * Email-client-safe CTA button. Uses a tiny presentation table rather than
+ * relying on modern CSS so Gmail, Outlook, Apple Mail, and mobile webviews
+ * render a stable button instead of exposing a raw URL in the HTML body.
+ */
+export function emailButton(href: string, label: string): string {
+  return [
+    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:22px 0;">`,
+    `<tr>`,
+    `<td style="background:${EMAIL_BRAND.link};border-radius:6px;text-align:center;">`,
+    `<a href="${esc(href)}" style="display:inline-block;padding:12px 18px;color:${EMAIL_BRAND.frameText};font-size:15px;font-weight:700;line-height:1.2;text-decoration:none;border-radius:6px;">${esc(label)}</a>`,
+    `</td>`,
+    `</tr>`,
+    `</table>`,
+  ].join('');
+}
+
+/**
  * Build the subject + text + html body for a notify event WITHOUT sending.
  * Exposed so the admin /admin/email-preview route can render the same
  * output a real send would, using fake-but-shaped sample inputs.
@@ -222,6 +239,7 @@ export function composeNotification(args: NotifyArgs): Composed {
 function compose(args: NotifyArgs): Composed {
   const link = args.event === 'consent_package_sent' ? args.clientPortalUrl : args.adminUrl;
   const linkHtml = emailLink(link);
+  const consentCtaHtml = emailButton(link, 'Review and sign consents');
   // Append retreat-id tail to internal subjects so an admin scanning their
   // inbox can correlate "this alert is about which retreat?" without
   // opening the body. retreatId is an opaque uuid - NOT PHI - so this
@@ -237,13 +255,13 @@ function compose(args: NotifyArgs): Composed {
         preheader: 'Your therapist has prepared your consent package. Sign at the link inside.',
         textBody:
           `Hi ${args.clientFirstName},\n\n` +
-          `Your therapist has prepared your consent package. Please review and sign at the link below - it is unique to you.\n\n` +
-          `${link}\n\n` +
+          `Your therapist has prepared your consent package. Please review and sign at this secure link - it is unique to you.\n\n` +
+          `Review and sign consents: ${link}\n\n` +
           `If you have questions, reply to this email and our team will be in touch.\n`,
         htmlInner:
           `<p style="margin:0 0 14px 0;">Hi ${esc(args.clientFirstName)},</p>` +
-          `<p style="margin:0 0 14px 0;">Your therapist has prepared your consent package. Please review and sign at the link below - it is unique to you.</p>` +
-          `<p style="margin:0 0 14px 0;">${linkHtml}</p>` +
+          `<p style="margin:0 0 14px 0;">Your therapist has prepared your consent package. Please review and sign using the secure button below. It is unique to you.</p>` +
+          consentCtaHtml +
           `<p style="margin:0;">If you have questions, reply to this email and our team will be in touch.</p>`,
         templateName: 'consent_package_sent',
       };
@@ -333,19 +351,25 @@ export async function notify(args: NotifyArgs): Promise<void> {
   const composed = compose(args);
   const { db } = await getDb();
 
-  // Resolve internal recipients from the shared notification_recipients
-  // table (currently the support@ inbox plus any future shared addresses).
-  const internal = await db
-    .select({ email: notificationRecipients.email })
-    .from(notificationRecipients)
-    .where(
-      and(
-        eq(notificationRecipients.eventType, args.event),
-        eq(notificationRecipients.active, true),
-      ),
-    );
+  const recipients = new Set<string>();
 
-  const recipients = new Set<string>(internal.map((r) => r.email));
+  if (args.event !== 'consent_package_sent') {
+    // Resolve internal recipients from the shared notification_recipients
+    // table (currently the support@ inbox plus any future shared addresses).
+    // Client-facing consent packages skip this: the Gmail sender is support@,
+    // and sending support@ to support@ creates noisy self-copies.
+    const internal = await db
+      .select({ email: notificationRecipients.email })
+      .from(notificationRecipients)
+      .where(
+        and(
+          eq(notificationRecipients.eventType, args.event),
+          eq(notificationRecipients.active, true),
+        ),
+      );
+
+    for (const r of internal) recipients.add(r.email);
+  }
 
   if (ACTION_REQUIRED_EVENTS.has(args.event)) {
     // Loop in only the retreat's assigned therapist - not every active
@@ -359,8 +383,8 @@ export async function notify(args: NotifyArgs): Promise<void> {
   }
 
   if (args.event === 'consent_package_sent') {
-    // Client gets the same email separately; their address is PHI but the
-    // body is generic + token-only.
+    // The consent package is client-facing only. The client address is PHI,
+    // but the body is generic + token-only.
     recipients.add(args.clientEmail);
   }
 

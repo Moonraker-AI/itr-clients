@@ -165,7 +165,7 @@ export const transitions = {
    *   - validates the transition
    *   - flips `retreats.state`
    *   - writes audit_event
-   *   - emails the client + team@ via notify()
+   *   - emails the client via notify()
    */
   async sendConsentPackage(args: {
     retreatId: RetreatId;
@@ -1258,4 +1258,3 @@ async function runRetry(args: {
     attempt,
   };
 }
-

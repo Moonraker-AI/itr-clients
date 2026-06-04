@@ -228,14 +228,15 @@ async function main() {
       .onConflictDoNothing({ target: pricingConfig.id });
 
     // Notification recipients (DESIGN §8). The shared inbox gets every
-    // event. Per-therapist notifications are NOT seeded here - they are
+    // internal event. Client-facing consent packages send only to the
+    // client so support@ does not self-copy itself. Per-therapist
+    // notifications are NOT seeded here - they are
     // resolved at send time in `notify()` via retreat.therapist_id, so
     // each therapist only sees their own retreats' events. (M2 originally
     // seeded a row per therapist per action-required event; that caused
     // notification fan-out to all therapists. Removed in 0003 migration.)
     const TEAM = 'support@intensivetherapyretreat.com';
     const ALL_EVENTS = [
-      'consent_package_sent',
       'consents_signed',
       'deposit_paid',
       'dates_confirmed',
