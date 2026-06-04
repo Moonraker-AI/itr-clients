@@ -274,8 +274,8 @@ Each consent document generates one PDF with the signed name, evidence block, ti
 
 `notification_recipients` table maps `event_type` → list of email addresses.
 
-Default seed (migration 0003 swapped placeholder `team@` → real `support@`):
-- `support@intensivetherapyretreat.com` (existing shared inbox) gets all admin-action emails
+Default seed (migration 0003 swapped placeholder `team@` → real `support@`, migration 0015 stopped client-facing consent-package self-copies):
+- `support@intensivetherapyretreat.com` (existing shared inbox) gets internal admin-action emails
 - Each therapist's email gets only **action-required** notifications (deposit paid → please confirm dates; charge failed → action needed)
 - Therapists can see full state in the admin dashboard for non-actionable events
 - Internal subject lines tagged with `[ret #abc12345]` (M9 tier-18) so admins can correlate mailbox alerts to the right retreat without opening the body — the tag is the first 8 chars of `retreat.id`, NOT PHI

@@ -12,7 +12,7 @@ surface for detail.
 
 | Event | Subject | Body (text) | Recipients |
 |-------|---------|-------------|------------|
-| `consent_package_sent` | `Your Intensive Therapy Retreats consent package` | "Hi {firstName}, Your therapist has prepared your consent package. Please review and sign at the link below — it is unique to you. {url} If you have questions, reply to this email and our team will be in touch." | client + internal |
+| `consent_package_sent` | `Your Intensive Therapy Retreats consent package` | "Hi {firstName}, Your therapist has prepared your consent package. Please review and sign using the secure button below. It is unique to you. If you have questions, reply to this email and our team will be in touch." | client only |
 | `consents_signed` | `Consents signed [ret #abcd1234]` | `All required consents have been signed. {adminUrl}` | internal |
 | `deposit_paid` | `Deposit paid — please confirm dates [ret #abcd1234]` | `Deposit paid. Please confirm dates: {adminUrl}` | internal + assigned therapist |
 | `dates_confirmed` | `Retreat dates confirmed [ret #abcd1234]` | `Retreat dates have been confirmed. {adminUrl}` (+ `.ics` attachment) | internal |

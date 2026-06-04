@@ -11,9 +11,30 @@
     if (!sel || !box) return;
     box.hidden = sel.value !== 'custom';
   }
+
+  function bindSubmitGuard() {
+    var form = document.querySelector('form[method="post"]');
+    if (!form) return;
+    form.addEventListener('submit', function (event) {
+      if (form.dataset.submitting === '1') {
+        event.preventDefault();
+        return;
+      }
+      if (typeof form.checkValidity === 'function' && !form.checkValidity()) return;
+      form.dataset.submitting = '1';
+
+      var submit = form.querySelector('button[type="submit"]');
+      if (!submit) return;
+      submit.disabled = true;
+      submit.setAttribute('aria-busy', 'true');
+      submit.textContent = 'Creating';
+    });
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
     var sel = document.getElementById('pricing_basis');
     if (sel) sel.addEventListener('change', sync);
     sync();
+    bindSubmitGuard();
   });
 })();

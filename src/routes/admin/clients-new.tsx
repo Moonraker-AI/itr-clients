@@ -10,6 +10,8 @@
  * the double-submit cookie + hidden input pattern (lib/csrf.ts).
  */
 
+import { randomUUID } from 'node:crypto';
+
 import { Hono } from 'hono';
 import { asc, eq } from 'drizzle-orm';
 
@@ -46,6 +48,8 @@ import {
 
 export const adminClientsNewRoute = new Hono();
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 interface TherapistOption {
   id: string;
   slug: string;
@@ -75,6 +79,7 @@ adminClientsNewRoute.get('/', async (c) => {
     .orderBy(asc(therapists.fullName));
 
   const csrfToken = ensureCsrfToken(c);
+  const createRequestId = randomUUID();
   const user = c.get('user');
   const isTherapist = user?.role === 'therapist';
   const selfTherapist = isTherapist
@@ -97,6 +102,7 @@ adminClientsNewRoute.get('/', async (c) => {
 
           <form method="post" class="space-y-6">
           <CsrfInput token={csrfToken} />
+          <input type="hidden" name="_create_request_id" value={createRequestId} />
 
           <Card>
             <CardHeader>
@@ -271,6 +277,7 @@ adminClientsNewRoute.post('/', async (c) => {
   }
   const get = (k: string) => (form.get(k) as string | null) ?? '';
   const getNum = (k: string) => Number(form.get(k) ?? 0);
+  const createRequestId = get('_create_request_id').trim();
 
   // P2#16: when role=therapist, force therapist_id to the session's
   // therapist regardless of submitted form value. Defense-in-depth so a
@@ -323,6 +330,9 @@ adminClientsNewRoute.post('/', async (c) => {
 
   if (!therapistId || !firstName || !lastName || !email) {
     return c.json({ error: 'missing_required_fields' }, 400);
+  }
+  if (!UUID_RE.test(createRequestId)) {
+    return c.json({ error: 'invalid_create_request_id' }, 400);
   }
   // Audit tier-10 - defensive bounds on free-text fields. clients.* columns
   // are TEXT (unbounded); without a cap a typo or a paste accident could
@@ -429,60 +439,79 @@ adminClientsNewRoute.post('/', async (c) => {
     return c.json({ error: 'no_active_consent_templates' }, 500);
   }
 
-  const result = await db.transaction(async (tx) => {
-    const [client] = await tx
-      .insert(clients)
-      .values({
-        firstName,
-        lastName,
-        email,
-        phone,
-        stateOfResidence,
-        createdByTherapistId: therapistId,
-      })
-      .returning({ id: clients.id });
-    if (!client) throw new Error('client insert failed');
+  let result: { id: string; clientToken: string };
+  try {
+    result = await db.transaction(async (tx) => {
+      const [client] = await tx
+        .insert(clients)
+        .values({
+          firstName,
+          lastName,
+          email,
+          phone,
+          stateOfResidence,
+          createdByTherapistId: therapistId,
+        })
+        .returning({ id: clients.id });
+      if (!client) throw new Error('client insert failed');
 
-    const [retreat] = await tx
-      .insert(retreats)
-      .values({
-        clientId: client.id,
-        therapistId,
-        locationId: t.primaryLocationId,
-        state: 'draft',
-        program,
-        plannedFullDays,
-        plannedHalfDays,
-        paymentMethod,
-        fullDayRateCents,
-        halfDayRateCents,
-        achDiscountPct: achDiscountPct.toFixed(4),
-        totalPlannedCents: price.totalCents,
-        depositCents,
-        pricingBasis,
-        pricingNotes,
-        clientToken: generateClientToken(),
-      })
-      .returning({ id: retreats.id, clientToken: retreats.clientToken });
-    if (!retreat) throw new Error('retreat insert failed');
+      const [retreat] = await tx
+        .insert(retreats)
+        .values({
+          clientId: client.id,
+          therapistId,
+          locationId: t.primaryLocationId,
+          state: 'draft',
+          program,
+          plannedFullDays,
+          plannedHalfDays,
+          paymentMethod,
+          fullDayRateCents,
+          halfDayRateCents,
+          achDiscountPct: achDiscountPct.toFixed(4),
+          totalPlannedCents: price.totalCents,
+          depositCents,
+          pricingBasis,
+          pricingNotes,
+          clientToken: generateClientToken(),
+          createRequestId,
+        })
+        .returning({ id: retreats.id, clientToken: retreats.clientToken });
+      if (!retreat) throw new Error('retreat insert failed');
 
-    // Program-aware template set:
-    //   ITR retreats: skip every kair-* template (main consent + portal
-    //     resources from v0.24.0).
-    //   KAIR retreats: skip the standard 'informed-consent' (replaced by
-    //     'kair-informed-consent') but include the kair-* portal resources
-    //     so they show up on /c/[token]/resources after signing.
-    // Shared templates (NPP, emergency-contact-release) attach to both.
-    for (const [name, tpl] of templateIds) {
-      if (program === 'kair' && name === 'informed-consent') continue;
-      if (program !== 'kair' && name.startsWith('kair-')) continue;
-      await tx.insert(retreatRequiredConsents).values({
-        retreatId: retreat.id,
-        templateId: tpl.id,
-      });
+      // Program-aware template set:
+      //   ITR retreats: skip every kair-* template (main consent + portal
+      //     resources from v0.24.0).
+      //   KAIR retreats: skip the standard 'informed-consent' (replaced by
+      //     'kair-informed-consent') but include the kair-* portal resources
+      //     so they show up on /c/[token]/resources after signing.
+      // Shared templates (NPP, emergency-contact-release) attach to both.
+      for (const [name, tpl] of templateIds) {
+        if (program === 'kair' && name === 'informed-consent') continue;
+        if (program !== 'kair' && name.startsWith('kair-')) continue;
+        await tx.insert(retreatRequiredConsents).values({
+          retreatId: retreat.id,
+          templateId: tpl.id,
+        });
+      }
+      return retreat;
+    });
+  } catch (err) {
+    if (isCreateRequestDuplicate(err)) {
+      const [existing] = await db
+        .select({ id: retreats.id, clientToken: retreats.clientToken })
+        .from(retreats)
+        .where(eq(retreats.createRequestId, createRequestId));
+      if (existing) {
+        log.info('admin_client_create_duplicate_suppressed', {
+          retreatId: existing.id,
+          therapistId,
+        });
+        return c.redirect(`/admin/clients/${existing.id}`);
+      }
     }
-    return retreat;
-  });
+    throw err;
+  }
 
   await transitions.sendConsentPackage({
     retreatId: result.id,
@@ -495,3 +524,12 @@ adminClientsNewRoute.post('/', async (c) => {
   });
   return c.redirect(`/admin/clients/${result.id}`);
 });
+
+function isCreateRequestDuplicate(err: unknown): boolean {
+  const pgErr = err as { code?: string; constraint?: string; message?: string };
+  if (pgErr.code !== '23505') return false;
+  return (
+    pgErr.constraint === 'retreats_create_request_id_idx' ||
+    (pgErr.message ?? '').includes('retreats_create_request_id_idx')
+  );
+}
