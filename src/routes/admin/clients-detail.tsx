@@ -26,6 +26,7 @@ import {
 } from '../../db/schema.js';
 import { therapistCanAccess } from '../../lib/auth.js';
 import { getTemplate, sortRequiredConsents } from '../../lib/consent-templates.js';
+import { ensureCsrfToken, verifyCsrfToken } from '../../lib/csrf.js';
 import { formatCents } from '../../lib/pricing.js';
 import {
   AdminShell,
@@ -33,10 +34,12 @@ import {
   AlertDescription,
   AlertTitle,
   Badge,
+  Button,
   Card,
   CardContent,
   CardHeader,
   CardTitle,
+  CsrfInput,
   Layout,
   LinkButton,
   PageHeader,
@@ -90,6 +93,8 @@ adminClientsDetailRoute.get('/:id', async (c) => {
       scheduledStartDate: retreats.scheduledStartDate,
       scheduledEndDate: retreats.scheduledEndDate,
       createdAt: retreats.createdAt,
+      archivedAt: retreats.archivedAt,
+      archiveReason: retreats.archiveReason,
       clientFirstName: clients.firstName,
       clientLastName: clients.lastName,
       clientEmail: clients.email,
@@ -232,6 +237,7 @@ adminClientsDetailRoute.get('/:id', async (c) => {
   const depositPaid = audits.some((a) => a.eventType === 'deposit_paid');
   const showConfirmDates = row.state === 'awaiting_deposit' && depositPaid;
   const user = c.get('user');
+  const csrfToken = ensureCsrfToken(c);
 
   return c.html(
     <Layout title={`Retreat ${row.retreatId.slice(0, 8)} - ITR Clients`}>
@@ -268,9 +274,16 @@ adminClientsDetailRoute.get('/:id', async (c) => {
               <CardTitle class="text-sm text-muted-foreground">State</CardTitle>
             </CardHeader>
             <CardContent>
-              <Badge variant="default" class="text-sm px-3 py-1">
-                {row.state}
-              </Badge>
+              <div class="flex flex-wrap gap-2">
+                <Badge variant="default" class="text-sm px-3 py-1">
+                  {row.state}
+                </Badge>
+                {row.archivedAt ? (
+                  <Badge variant="secondary" class="text-sm px-3 py-1">
+                    archived
+                  </Badge>
+                ) : null}
+              </div>
             </CardContent>
           </Card>
           <Card class="lg:col-span-2">
@@ -338,6 +351,40 @@ adminClientsDetailRoute.get('/:id', async (c) => {
             </CardContent>
           </Card>
         </div>
+
+        <Card class="mb-6">
+          <CardHeader>
+            <CardTitle>Record visibility</CardTitle>
+          </CardHeader>
+          <CardContent class="space-y-3">
+            {row.archivedAt ? (
+              <>
+                <p class="text-sm text-muted-foreground">
+                  This record is hidden from the active dashboard. Reason: {row.archiveReason ?? 'archived'}
+                </p>
+                <form method="post" action={`/admin/clients/${row.retreatId}/restore`}>
+                  <CsrfInput token={csrfToken} />
+                  <Button type="submit" variant="outline">
+                    Restore to active
+                  </Button>
+                </form>
+              </>
+            ) : (
+              <>
+                <p class="text-sm text-muted-foreground">
+                  Archive this record to hide it from the active dashboard. It stays recoverable in the Archived tab.
+                </p>
+                <form method="post" action={`/admin/clients/${row.retreatId}/archive`} class="flex flex-wrap gap-2">
+                  <CsrfInput token={csrfToken} />
+                  <input type="hidden" name="reason" value="manual_archive" />
+                  <Button type="submit" variant="outline">
+                    Archive record
+                  </Button>
+                </form>
+              </>
+            )}
+          </CardContent>
+        </Card>
 
         {row.scheduledStartDate && row.scheduledEndDate ? (
           <Card class="mb-6">
@@ -670,4 +717,71 @@ adminClientsDetailRoute.get('/:id', async (c) => {
       </AdminShell>
     </Layout>,
   );
+});
+
+adminClientsDetailRoute.post('/:id/archive', async (c) => {
+  const id = c.req.param('id');
+  const form = await c.req.formData();
+  if (!verifyCsrfToken(c, String(form.get('_csrf') ?? ''))) {
+    return c.json({ error: 'csrf_mismatch' }, 403);
+  }
+  const { db } = await getDb();
+  const [row] = await db
+    .select({ therapistId: retreats.therapistId })
+    .from(retreats)
+    .where(eq(retreats.id, id));
+  if (!row) return c.notFound();
+  const user = c.get('user');
+  if (!therapistCanAccess(user, row.therapistId)) return c.notFound();
+  const now = new Date();
+  const reason = String(form.get('reason') ?? 'manual_archive').slice(0, 200);
+  await db.update(retreats)
+    .set({
+      archivedAt: now,
+      archivedByTherapistId: user?.therapistId ?? null,
+      archiveReason: reason,
+      updatedAt: now,
+    })
+    .where(eq(retreats.id, id));
+  await db.insert(auditEvents).values({
+    retreatId: id,
+    actorType: 'therapist',
+    actorId: user?.therapistId ?? null,
+    eventType: 'retreat_archived',
+    payload: { reason },
+  });
+  return c.redirect(`/admin/clients/${id}`);
+});
+
+adminClientsDetailRoute.post('/:id/restore', async (c) => {
+  const id = c.req.param('id');
+  const form = await c.req.formData();
+  if (!verifyCsrfToken(c, String(form.get('_csrf') ?? ''))) {
+    return c.json({ error: 'csrf_mismatch' }, 403);
+  }
+  const { db } = await getDb();
+  const [row] = await db
+    .select({ therapistId: retreats.therapistId })
+    .from(retreats)
+    .where(eq(retreats.id, id));
+  if (!row) return c.notFound();
+  const user = c.get('user');
+  if (!therapistCanAccess(user, row.therapistId)) return c.notFound();
+  const now = new Date();
+  await db.update(retreats)
+    .set({
+      archivedAt: null,
+      archivedByTherapistId: null,
+      archiveReason: null,
+      updatedAt: now,
+    })
+    .where(eq(retreats.id, id));
+  await db.insert(auditEvents).values({
+    retreatId: id,
+    actorType: 'therapist',
+    actorId: user?.therapistId ?? null,
+    eventType: 'retreat_restored',
+    payload: {},
+  });
+  return c.redirect(`/admin/clients/${id}`);
 });

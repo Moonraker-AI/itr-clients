@@ -17,6 +17,8 @@ import { asc, eq } from 'drizzle-orm';
 
 import { getDb } from '../../db/client.js';
 import {
+  contactInquiries,
+  contactInquiryEvents,
   clients,
   pricingConfig,
   retreatRequiredConsents,
@@ -61,6 +63,16 @@ interface TherapistOption {
   kairHalfDayCents: number | null;
 }
 
+interface InquiryPrefill {
+  id: string;
+  assignedTherapistId: string | null;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  location: string;
+}
+
 adminClientsNewRoute.get('/', async (c) => {
   const { db } = await getDb();
   const therapistRows = await db
@@ -85,6 +97,29 @@ adminClientsNewRoute.get('/', async (c) => {
   const selfTherapist = isTherapist
     ? (therapistRows as TherapistOption[]).find((t) => t.id === user.therapistId)
     : null;
+  const inquiryId = UUID_RE.test(c.req.query('inquiry_id') ?? '')
+    ? String(c.req.query('inquiry_id'))
+    : '';
+  let inquiryPrefill: InquiryPrefill | null = null;
+  if (inquiryId) {
+    const [inquiry] = await db
+      .select({
+        id: contactInquiries.id,
+        assignedTherapistId: contactInquiries.assignedTherapistId,
+        firstName: contactInquiries.firstName,
+        lastName: contactInquiries.lastName,
+        email: contactInquiries.email,
+        phone: contactInquiries.phone,
+        location: contactInquiries.location,
+      })
+      .from(contactInquiries)
+      .where(eq(contactInquiries.id, inquiryId));
+    if (!inquiry) return c.notFound();
+    if (user?.role === 'therapist' && inquiry.assignedTherapistId !== user.therapistId) {
+      return c.notFound();
+    }
+    inquiryPrefill = inquiry;
+  }
 
   return c.html(
     <Layout
@@ -98,11 +133,21 @@ adminClientsNewRoute.get('/', async (c) => {
     >
       <AdminShell user={user} current="new">
         <div class="max-w-3xl mx-auto">
-          <PageHeader title="New client + retreat" description="Create record and send the consent package." />
+          <PageHeader
+            title="New client + retreat"
+            description={
+              inquiryPrefill
+                ? `Prefilled from inquiry ${inquiryPrefill.id.slice(0, 8)}. Review before sending.`
+                : 'Create record and send the consent package.'
+            }
+          />
 
           <form method="post" class="space-y-6">
           <CsrfInput token={csrfToken} />
           <input type="hidden" name="_create_request_id" value={createRequestId} />
+          {inquiryPrefill ? (
+            <input type="hidden" name="source_inquiry_id" value={inquiryPrefill.id} />
+          ) : null}
 
           <Card>
             <CardHeader>
@@ -129,6 +174,7 @@ adminClientsNewRoute.get('/', async (c) => {
                     {(therapistRows as TherapistOption[]).map((t) => (
                       <option
                         value={t.id}
+                        selected={t.id === inquiryPrefill?.assignedTherapistId}
                         data-kair-eligible={t.kairEligible ? '1' : '0'}
                       >
                         {t.fullName}{t.kairEligible ? ' · KAIR' : ''}
@@ -172,16 +218,32 @@ adminClientsNewRoute.get('/', async (c) => {
             </CardHeader>
             <CardContent class="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Field label="First name" for="first_name">
-                <Input id="first_name" name="first_name" required />
+                <Input
+                  id="first_name"
+                  name="first_name"
+                  value={inquiryPrefill?.firstName ?? ''}
+                  required
+                />
               </Field>
               <Field label="Last name" for="last_name">
-                <Input id="last_name" name="last_name" required />
+                <Input
+                  id="last_name"
+                  name="last_name"
+                  value={inquiryPrefill?.lastName ?? ''}
+                  required
+                />
               </Field>
               <Field label="Email" for="email">
-                <Input id="email" name="email" type="email" required />
+                <Input
+                  id="email"
+                  name="email"
+                  type="email"
+                  value={inquiryPrefill?.email ?? ''}
+                  required
+                />
               </Field>
               <Field label="Phone" for="phone">
-                <Input id="phone" name="phone" />
+                <Input id="phone" name="phone" value={inquiryPrefill?.phone ?? ''} />
               </Field>
               <Field label="State of residence" for="state_of_residence" hint="2-letter abbreviation">
                 <Input
@@ -278,6 +340,7 @@ adminClientsNewRoute.post('/', async (c) => {
   const get = (k: string) => (form.get(k) as string | null) ?? '';
   const getNum = (k: string) => Number(form.get(k) ?? 0);
   const createRequestId = get('_create_request_id').trim();
+  const sourceInquiryId = get('source_inquiry_id').trim();
 
   // P2#16: when role=therapist, force therapist_id to the session's
   // therapist regardless of submitted form value. Defense-in-depth so a
@@ -334,6 +397,9 @@ adminClientsNewRoute.post('/', async (c) => {
   if (!UUID_RE.test(createRequestId)) {
     return c.json({ error: 'invalid_create_request_id' }, 400);
   }
+  if (sourceInquiryId && !UUID_RE.test(sourceInquiryId)) {
+    return c.json({ error: 'invalid_source_inquiry_id' }, 400);
+  }
   // Audit tier-10 - defensive bounds on free-text fields. clients.* columns
   // are TEXT (unbounded); without a cap a typo or a paste accident could
   // insert a megabyte of text.
@@ -373,6 +439,26 @@ adminClientsNewRoute.post('/', async (c) => {
 
   const [t] = await db.select().from(therapists).where(eq(therapists.id, therapistId));
   if (!t) return c.json({ error: 'therapist_not_found' }, 400);
+
+  let sourceInquiry: { id: string; assignedTherapistId: string | null; status: string } | null = null;
+  if (sourceInquiryId) {
+    const [inquiry] = await db
+      .select({
+        id: contactInquiries.id,
+        assignedTherapistId: contactInquiries.assignedTherapistId,
+        status: contactInquiries.status,
+      })
+      .from(contactInquiries)
+      .where(eq(contactInquiries.id, sourceInquiryId));
+    if (!inquiry) return c.json({ error: 'source_inquiry_not_found' }, 404);
+    if (sessionUser?.role === 'therapist' && inquiry.assignedTherapistId !== sessionUser.therapistId) {
+      return c.json({ error: 'source_inquiry_forbidden' }, 403);
+    }
+    if (inquiry.assignedTherapistId && inquiry.assignedTherapistId !== therapistId) {
+      return c.json({ error: 'source_inquiry_therapist_mismatch' }, 400);
+    }
+    sourceInquiry = inquiry;
+  }
 
   const [pc] = await db
     .select()
@@ -518,9 +604,32 @@ adminClientsNewRoute.post('/', async (c) => {
     actor: { kind: 'therapist', id: therapistId },
   });
 
+  if (sourceInquiry) {
+    const now = new Date();
+    await db.update(contactInquiries)
+      .set({
+        status: 'converted',
+        convertedRetreatId: result.id,
+        statusChangedAt: now,
+        lastActionByTherapistId: sessionUser?.therapistId ?? therapistId,
+        updatedAt: now,
+      })
+      .where(eq(contactInquiries.id, sourceInquiry.id));
+    await db.insert(contactInquiryEvents).values({
+      inquiryId: sourceInquiry.id,
+      actorTherapistId: sessionUser?.therapistId ?? therapistId,
+      eventType: 'converted',
+      payload: {
+        from: sourceInquiry.status,
+        retreatId: result.id,
+      },
+    });
+  }
+
   log.info('admin_client_created', {
     retreatId: result.id,
     therapistId,
+    sourceInquiryId: sourceInquiry?.id ?? null,
   });
   return c.redirect(`/admin/clients/${result.id}`);
 });

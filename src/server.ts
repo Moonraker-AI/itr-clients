@@ -5,6 +5,7 @@ import { bodyLimit } from 'hono/body-limit';
 
 import { getDb } from './db/client.js';
 import { browserErrorRoute } from './routes/api/browser-error.js';
+import { contactInquiryRoute } from './routes/api/contact-inquiry.js';
 import { stripeWebhookRoute } from './routes/api/webhooks-stripe.js';
 import { cronStateTransitionsRoute } from './routes/api/cron-state-transitions.js';
 import { cronRetryFailedChargesRoute } from './routes/api/cron-retry-failed-charges.js';
@@ -22,6 +23,7 @@ import { adminBulkRoute } from './routes/admin/bulk.js';
 import { adminEmailPreviewRoute } from './routes/admin/email-preview.js';
 import { adminDashboardRoute } from './routes/admin/dashboard.js';
 import { adminExportRoute } from './routes/admin/export.js';
+import { adminInquiriesRoute } from './routes/admin/inquiries.js';
 import { adminPayoutsRoute } from './routes/admin/payouts.js';
 import { adminPricingRoute } from './routes/admin/pricing.js';
 import { adminRefundRoute } from './routes/admin/refund.js';
@@ -73,12 +75,26 @@ app.use('*', async (c, next) => {
   await next();
   c.header('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
   c.header('X-Content-Type-Options', 'nosniff');
-  c.header('X-Frame-Options', 'DENY');
+  const contactEmbedFrame = c.req.path === '/api/public/contact-inquiry/form';
+  if (!contactEmbedFrame) {
+    c.header('X-Frame-Options', 'DENY');
+  }
   c.header('Referrer-Policy', 'no-referrer');
   // CSP only on HTML responses - JSON/redirects don't need it and adding
   // it everywhere can break unexpected client tooling.
   const ct = c.res.headers.get('content-type') ?? '';
   if (ct.includes('text/html')) {
+    const frameAncestors = contactEmbedFrame
+      ? [
+          "'self'",
+          'https://intensivetherapyretreat.com',
+          'https://www.intensivetherapyretreat.com',
+          'https://sites.moonraker.ai',
+          ...(process.env.NODE_ENV !== 'production'
+            ? ['http://localhost:*', 'http://127.0.0.1:*']
+            : []),
+        ].join(' ')
+      : "'none'";
     c.header(
       'Content-Security-Policy',
       [
@@ -88,7 +104,7 @@ app.use('*', async (c, next) => {
         `script-src 'self' ${PREPAINT_THEME_SHA} https://www.gstatic.com https://apis.google.com https://js.stripe.com`,
         "connect-src 'self' https://*.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.gstatic.com https://apis.google.com https://api.stripe.com",
         "frame-src https://js.stripe.com https://*.stripe.com https://*.firebaseapp.com https://accounts.google.com",
-        "frame-ancestors 'none'",
+        `frame-ancestors ${frameAncestors}`,
         "base-uri 'self'",
         "form-action 'self'",
       ].join('; '),
@@ -128,11 +144,18 @@ app.get('/', (c) =>
 // webhook route; every other path 404s. Lets us split the public webhook
 // surface from the IAM-gated main app without running two codebases.
 const webhookOnly = process.env.WEBHOOK_ONLY === '1';
+// CONTACT_ONLY=1 deploys this image as the public contact-intake Cloud Run
+// service. It registers ONLY /health + /api/public/contact-inquiry.
+const contactOnly = process.env.CONTACT_ONLY === '1';
 
-app.route('/api/webhooks/stripe', stripeWebhookRoute);
-app.route('/api/browser-error', browserErrorRoute);
+if (webhookOnly) {
+  app.route('/api/webhooks/stripe', stripeWebhookRoute);
+} else if (contactOnly) {
+  app.route('/api/public/contact-inquiry', contactInquiryRoute);
+} else {
+  app.route('/api/webhooks/stripe', stripeWebhookRoute);
+  app.route('/api/browser-error', browserErrorRoute);
 
-if (!webhookOnly) {
   // Static assets (M10): Tailwind-compiled CSS + self-hosted fonts. Long
   // cache header on hashed-or-immutable filenames; the CSS file changes
   // on every deploy so the revision query string from <link> bust cache.
@@ -169,6 +192,7 @@ if (!webhookOnly) {
   app.use('/admin/*', requireAuth);
 
   app.route('/admin/pricing', adminPricingRoute);
+  app.route('/admin/inquiries', adminInquiriesRoute);
   app.route('/admin/audit', adminAuditRoute);
   app.route('/admin/payouts', adminPayoutsRoute);
   app.route('/admin/bulk', adminBulkRoute);
@@ -214,6 +238,7 @@ if (!webhookOnly) {
   app.route('/c', publicConsentsRoute);
   app.route('/c', publicCheckoutRoute);
   app.route('/c', publicPaymentRoute);
+  app.route('/api/public/contact-inquiry', contactInquiryRoute);
   app.route('/api/cron', cronStateTransitionsRoute);
   app.route('/api/cron', cronRetryFailedChargesRoute);
   app.route('/api/cron', cronScanBouncesRoute);
@@ -245,9 +270,11 @@ app.onError((err, c) => {
 // Cloud Run, but a configuration drift would silently expose them;
 // require the shared secret as a belt to the IAM suspenders. Skipped
 // for the webhook-only service since it doesn't host cron routes.
+// Skipped for the contact-only service since it doesn't host cron routes.
 // Skipped when LOCAL_DB_URL is set (local dev w/ proxy).
 if (
   !webhookOnly &&
+  !contactOnly &&
   !process.env.LOCAL_DB_URL &&
   !process.env.CRON_SHARED_SECRET
 ) {
@@ -262,6 +289,7 @@ const server = serve({ fetch: app.fetch, port }, (info) => {
     port: info.port,
     revision: process.env.K_REVISION ?? 'local',
     webhookOnly,
+    contactOnly,
   });
 });
 
