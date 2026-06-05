@@ -275,7 +275,7 @@ function renderEmbeddedForm(args: {
       --teal: oklch(47% 0.105 185);
       --teal-dark: oklch(35% 0.09 185);
       --danger: oklch(45% 0.14 25);
-      --radius: 14px;
+      --radius: 15px;
       font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
     * { box-sizing: border-box; }
