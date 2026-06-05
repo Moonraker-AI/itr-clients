@@ -12,7 +12,7 @@
 
 import { Hono } from 'hono';
 import { raw } from 'hono/html';
-import { and, asc, desc, eq, ilike, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, isNotNull, isNull, or, sql } from 'drizzle-orm';
 
 import { getDb } from '../../db/client.js';
 import { clients, retreats, therapists } from '../../db/schema.js';
@@ -93,6 +93,7 @@ interface DashRow {
 
 adminDashboardRoute.get('/', async (c) => {
   const stateFilter = c.req.query('state') ?? '';
+  const view = c.req.query('view') === 'archived' ? 'archived' : 'active';
   const therapistFilterRaw = c.req.query('therapist') ?? '';
   // UUID shape guard so a malformed `?therapist=` value can't reach drizzle
   // and surface as a database-level error.
@@ -121,6 +122,7 @@ adminDashboardRoute.get('/', async (c) => {
 
   const user = c.get('user');
   const conditions = [];
+  conditions.push(view === 'archived' ? isNotNull(retreats.archivedAt) : isNull(retreats.archivedAt));
   if (stateFilter && (RETREAT_STATES as readonly string[]).includes(stateFilter)) {
     conditions.push(eq(retreats.state, stateFilter as RetreatState));
   }
@@ -188,6 +190,7 @@ adminDashboardRoute.get('/', async (c) => {
   const hasNext = nextOffset < total;
   const baseQs = (off: number) => {
     const params = new URLSearchParams();
+    if (view !== 'active') params.set('view', view);
     if (stateFilter) params.set('state', stateFilter);
     if (therapistFilter) params.set('therapist', therapistFilter);
     if (qFilter) params.set('q', qFilter);
@@ -213,6 +216,20 @@ adminDashboardRoute.get('/', async (c) => {
     <Layout title="Dashboard - ITR Clients">
       <AdminShell user={user} current="dashboard">
         <PageHeader title="Retreats" description={`${rows.length} of ${total} · offset ${offset}`}>
+          <LinkButton
+            href="/admin"
+            variant={view === 'active' ? 'default' : 'outline'}
+            size="sm"
+          >
+            Active
+          </LinkButton>
+          <LinkButton
+            href="/admin?view=archived"
+            variant={view === 'archived' ? 'default' : 'outline'}
+            size="sm"
+          >
+            Archived
+          </LinkButton>
           <LinkButton href="/admin/clients/new" size="sm">
             + New client
           </LinkButton>
@@ -221,6 +238,7 @@ adminDashboardRoute.get('/', async (c) => {
         <Card class="mb-6">
           <CardContent class="pt-6">
             <form method="get" class="flex flex-wrap items-end gap-3">
+              <input type="hidden" name="view" value={view} />
               <div class="space-y-1.5 w-full sm:w-auto sm:min-w-[220px]">
                 <label class="text-xs text-muted-foreground">Search</label>
                 <Input
@@ -254,7 +272,7 @@ adminDashboardRoute.get('/', async (c) => {
               <Button type="submit" size="default">
                 Filter
               </Button>
-              <LinkButton href="/admin" variant="ghost" size="default">
+              <LinkButton href={view === 'archived' ? '/admin?view=archived' : '/admin'} variant="ghost" size="default">
                 Clear
               </LinkButton>
             </form>

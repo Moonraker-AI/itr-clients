@@ -211,6 +211,34 @@ steps:
       - --subnet=default
       - --vpc-egress=private-ranges-only
 
+  # Public contact-intake sibling service. Same image, CONTACT_ONLY=1
+  # registers only /health + /api/public/contact-inquiry. This keeps the
+  # HIPAA contact form public without exposing the authenticated admin app.
+  - id: contact-intake-deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - itr-contact-intake
+      - --image=$_REGION-docker.pkg.dev/$_PROJECT/itr/itr-client-hq:$COMMIT_SHA
+      - --project=$_PROJECT
+      - --region=$_REGION
+      - --service-account=$_RUNTIME_SA
+      - --allow-unauthenticated
+      - --ingress=all
+      - --min-instances=0
+      - --max-instances=3
+      - --cpu=1
+      - --memory=512Mi
+      - --concurrency=80
+      - --timeout=30s
+      - --set-env-vars=NODE_ENV=production,CLOUD_SQL_INSTANCE=$_CLOUD_SQL_INSTANCE,CONTACT_ONLY=1,PUBLIC_BASE_URL=$_PUBLIC_BASE_URL,GOOGLE_CLOUD_PROJECT=$_PROJECT
+      - --set-secrets=DB_URL=db-url:latest$_GMAIL_SECRETS_PART
+      - --network=default
+      - --subnet=default
+      - --vpc-egress=private-ranges-only
+
 substitutions:
   _GMAIL_SECRETS_PART: ''
   _AUTH_ENABLED: ''

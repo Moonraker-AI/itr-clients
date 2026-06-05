@@ -85,6 +85,7 @@ interface NavItem {
 
 const NAV: NavItem[] = [
   { href: '/admin', label: 'Dashboard', match: 'dashboard' },
+  { href: '/admin/inquiries', label: 'Inquiries', match: 'inquiries' },
   { href: '/admin/clients/new', label: 'New Client', match: 'new' },
   { href: '/admin/pricing', label: 'Pricing', match: 'pricing', adminOnly: true },
   { href: '/admin/payouts', label: 'Payouts', match: 'payouts' },
