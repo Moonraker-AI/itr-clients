@@ -280,7 +280,7 @@ function renderEmbeddedForm(args: {
     }
     * { box-sizing: border-box; }
     html, body { margin: 0; background: transparent; color: var(--ink); }
-    body { padding: 0; }
+    body { padding: 12px; }
     form {
       display: grid;
       gap: 16px;
