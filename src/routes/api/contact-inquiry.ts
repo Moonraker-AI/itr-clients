@@ -404,7 +404,110 @@ function renderEmbeddedForm(args: {
       </div>
       <div class="field">
         <label for="timezone">Time zone</label>
-        <input id="timezone" name="timezone" autocomplete="off" required data-timezone>
+        <select id="timezone" name="timezone" required data-timezone>
+          <option value="">Select time zone</option>
+          <optgroup label="UTC-12 to UTC-10">
+            <option value="Etc/GMT+12">GMT-12:00 - International Date Line West</option>
+            <option value="Pacific/Pago_Pago">GMT-11:00 - American Samoa</option>
+            <option value="Pacific/Honolulu">GMT-10:00 - Hawaii</option>
+          </optgroup>
+          <optgroup label="UTC-9 to UTC-7">
+            <option value="America/Anchorage">GMT-09:00 - Alaska</option>
+            <option value="America/Los_Angeles">GMT-08:00 - Pacific Time (US &amp; Canada)</option>
+            <option value="America/Vancouver">GMT-08:00 - Vancouver</option>
+            <option value="America/Tijuana">GMT-08:00 - Tijuana, Baja California</option>
+            <option value="America/Denver">GMT-07:00 - Mountain Time (US &amp; Canada)</option>
+            <option value="America/Phoenix">GMT-07:00 - Arizona (no DST)</option>
+            <option value="America/Chihuahua">GMT-07:00 - Chihuahua, Mazatlan</option>
+          </optgroup>
+          <optgroup label="UTC-6 to UTC-4">
+            <option value="America/Chicago">GMT-06:00 - Central Time (US &amp; Canada)</option>
+            <option value="America/Mexico_City">GMT-06:00 - Mexico City, Guadalajara</option>
+            <option value="America/Regina">GMT-06:00 - Saskatchewan (no DST)</option>
+            <option value="America/New_York">GMT-05:00 - Eastern Time (US &amp; Canada)</option>
+            <option value="America/Toronto">GMT-05:00 - Toronto</option>
+            <option value="America/Indiana/Indianapolis">GMT-05:00 - Indiana (East)</option>
+            <option value="America/Bogota">GMT-05:00 - Bogota, Lima, Quito</option>
+            <option value="America/Halifax">GMT-04:00 - Atlantic Time (Canada)</option>
+            <option value="America/Caracas">GMT-04:00 - Caracas</option>
+            <option value="America/Santiago">GMT-04:00 - Santiago</option>
+            <option value="America/La_Paz">GMT-04:00 - La Paz</option>
+            <option value="America/Manaus">GMT-04:00 - Manaus</option>
+          </optgroup>
+          <optgroup label="UTC-3:30 to UTC-1">
+            <option value="America/St_Johns">GMT-03:30 - Newfoundland</option>
+            <option value="America/Sao_Paulo">GMT-03:00 - Brasilia, Sao Paulo</option>
+            <option value="America/Argentina/Buenos_Aires">GMT-03:00 - Buenos Aires</option>
+            <option value="America/Montevideo">GMT-03:00 - Montevideo</option>
+            <option value="Atlantic/South_Georgia">GMT-02:00 - Mid-Atlantic</option>
+            <option value="Atlantic/Azores">GMT-01:00 - Azores</option>
+            <option value="Atlantic/Cape_Verde">GMT-01:00 - Cape Verde</option>
+          </optgroup>
+          <optgroup label="UTC+0">
+            <option value="UTC">GMT+00:00 - UTC</option>
+            <option value="Europe/London">GMT+00:00 - London, Dublin, Edinburgh</option>
+            <option value="Europe/Lisbon">GMT+00:00 - Lisbon</option>
+            <option value="Atlantic/Reykjavik">GMT+00:00 - Reykjavik</option>
+            <option value="Africa/Casablanca">GMT+00:00 - Casablanca</option>
+            <option value="Africa/Monrovia">GMT+00:00 - Monrovia</option>
+          </optgroup>
+          <optgroup label="UTC+1 to UTC+2">
+            <option value="Europe/Amsterdam">GMT+01:00 - Amsterdam, Berlin, Bern, Rome</option>
+            <option value="Europe/Paris">GMT+01:00 - Paris, Brussels</option>
+            <option value="Europe/Madrid">GMT+01:00 - Madrid</option>
+            <option value="Africa/Lagos">GMT+01:00 - West Central Africa</option>
+            <option value="Africa/Cairo">GMT+02:00 - Cairo</option>
+            <option value="Africa/Johannesburg">GMT+02:00 - Johannesburg, Harare</option>
+            <option value="Asia/Jerusalem">GMT+02:00 - Jerusalem</option>
+            <option value="Europe/Athens">GMT+02:00 - Athens, Bucharest</option>
+            <option value="Europe/Helsinki">GMT+02:00 - Helsinki, Kyiv</option>
+            <option value="Europe/Istanbul">GMT+03:00 - Istanbul</option>
+          </optgroup>
+          <optgroup label="UTC+3 to UTC+5:45">
+            <option value="Asia/Riyadh">GMT+03:00 - Riyadh, Kuwait</option>
+            <option value="Asia/Baghdad">GMT+03:00 - Baghdad</option>
+            <option value="Africa/Nairobi">GMT+03:00 - Nairobi</option>
+            <option value="Europe/Moscow">GMT+03:00 - Moscow, St. Petersburg</option>
+            <option value="Asia/Tehran">GMT+03:30 - Tehran</option>
+            <option value="Asia/Dubai">GMT+04:00 - Abu Dhabi, Dubai</option>
+            <option value="Asia/Tbilisi">GMT+04:00 - Tbilisi</option>
+            <option value="Asia/Yerevan">GMT+04:00 - Yerevan</option>
+            <option value="Asia/Kabul">GMT+04:30 - Kabul</option>
+            <option value="Asia/Karachi">GMT+05:00 - Karachi, Islamabad</option>
+            <option value="Asia/Tashkent">GMT+05:00 - Tashkent</option>
+            <option value="Asia/Kolkata">GMT+05:30 - Mumbai, New Delhi, Kolkata</option>
+            <option value="Asia/Colombo">GMT+05:30 - Sri Lanka</option>
+            <option value="Asia/Kathmandu">GMT+05:45 - Kathmandu</option>
+          </optgroup>
+          <optgroup label="UTC+6 to UTC+8">
+            <option value="Asia/Dhaka">GMT+06:00 - Dhaka</option>
+            <option value="Asia/Almaty">GMT+06:00 - Almaty</option>
+            <option value="Asia/Yangon">GMT+06:30 - Yangon (Rangoon)</option>
+            <option value="Asia/Bangkok">GMT+07:00 - Bangkok, Hanoi, Jakarta</option>
+            <option value="Asia/Ho_Chi_Minh">GMT+07:00 - Ho Chi Minh City</option>
+            <option value="Asia/Krasnoyarsk">GMT+07:00 - Krasnoyarsk</option>
+            <option value="Asia/Shanghai">GMT+08:00 - Beijing, Shanghai</option>
+            <option value="Asia/Hong_Kong">GMT+08:00 - Hong Kong</option>
+            <option value="Asia/Singapore">GMT+08:00 - Singapore, Kuala Lumpur</option>
+            <option value="Asia/Taipei">GMT+08:00 - Taipei</option>
+            <option value="Australia/Perth">GMT+08:00 - Perth</option>
+            <option value="Asia/Ulaanbaatar">GMT+08:00 - Ulaanbaatar</option>
+          </optgroup>
+          <optgroup label="UTC+9 to UTC+14">
+            <option value="Asia/Seoul">GMT+09:00 - Seoul</option>
+            <option value="Asia/Tokyo">GMT+09:00 - Tokyo, Osaka, Sapporo</option>
+            <option value="Australia/Darwin">GMT+09:30 - Darwin</option>
+            <option value="Australia/Adelaide">GMT+09:30 - Adelaide</option>
+            <option value="Australia/Brisbane">GMT+10:00 - Brisbane</option>
+            <option value="Australia/Sydney">GMT+10:00 - Sydney, Melbourne</option>
+            <option value="Pacific/Port_Moresby">GMT+10:00 - Port Moresby</option>
+            <option value="Pacific/Noumea">GMT+11:00 - New Caledonia</option>
+            <option value="Pacific/Auckland">GMT+12:00 - Auckland, Wellington</option>
+            <option value="Pacific/Fiji">GMT+12:00 - Fiji</option>
+            <option value="Pacific/Tongatapu">GMT+13:00 - Nukualofa</option>
+            <option value="Pacific/Apia">GMT+13:00 - Samoa</option>
+          </optgroup>
+        </select>
       </div>
     </div>
 
@@ -422,7 +525,18 @@ function renderEmbeddedForm(args: {
 
     <div class="field">
       <label for="heardFrom">How did you hear about us?</label>
-      <input id="heardFrom" name="heardFrom" autocomplete="off">
+      <select id="heardFrom" name="heardFrom">
+        <option value="">Select an option</option>
+        <option value="Google Search">Google Search</option>
+        <option value="Google Maps">Google Maps</option>
+        <option value="Gemini">Gemini</option>
+        <option value="ChatGPT">ChatGPT</option>
+        <option value="Claude">Claude</option>
+        <option value="Perplexity">Perplexity</option>
+        <option value="Newsletter">Newsletter</option>
+        <option value="Referral">Referral</option>
+        <option value="Other">Other</option>
+      </select>
     </div>
 
     <fieldset>
@@ -471,7 +585,7 @@ const EMBED_FORM_JS = `(() => {
   if (sourcePage instanceof HTMLInputElement && !sourcePage.value) {
     sourcePage.value = document.referrer || '';
   }
-  if (timezone instanceof HTMLInputElement && !timezone.value && 'Intl' in window) {
+  if (timezone instanceof HTMLSelectElement && !timezone.value && 'Intl' in window) {
     timezone.value = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
   }
 
@@ -547,7 +661,7 @@ const EMBED_FORM_JS = `(() => {
       }
       form.reset();
       if (sourcePage instanceof HTMLInputElement) sourcePage.value = document.referrer || '';
-      if (timezone instanceof HTMLInputElement && 'Intl' in window) {
+      if (timezone instanceof HTMLSelectElement && 'Intl' in window) {
         timezone.value = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
       }
       setStatus('Thank you. Your inquiry was sent securely.', 'success');
