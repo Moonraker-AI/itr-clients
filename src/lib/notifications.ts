@@ -188,8 +188,7 @@ export function wrapEmailHtml(
         `<tr>`,
         td(
           `background:${EMAIL_BRAND.frame};padding:16px 28px;text-align:left;color:${EMAIL_BRAND.frameText};font-size:12px;line-height:1.5;`,
-          `<div>Intensive Therapy Retreats &middot; Northampton, MA</div>` +
-            `<div style="margin-top:4px;opacity:0.85;">This is an automated message from the ITR Clients system. &copy; ${year}</div>`,
+          `<div>&copy; ${year} Intensive Therapy Retreats</div>`,
         ),
         `</tr>`,
         `</table>`,

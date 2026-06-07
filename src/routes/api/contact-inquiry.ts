@@ -193,6 +193,7 @@ contactInquiryRoute.post(
     await sendInquiryReceivedEmail({
       inquiryId: inquiry.id,
       therapistEmail: therapist.email,
+      therapistName: therapist.fullName,
     });
     await sendInquiryConfirmationEmail({
       to: data.email,
