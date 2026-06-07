@@ -42,14 +42,16 @@ export function inquiryRecipients(therapistEmail: string | null | undefined): st
 export async function sendInquiryReceivedEmail(args: {
   inquiryId: string;
   therapistEmail: string;
+  therapistName: string;
 }): Promise<void> {
+  const firstName = args.therapistName.split(' ')[0] ?? args.therapistName;
   await sendInternalInquiryEmail({
     inquiryId: args.inquiryId,
     recipients: inquiryRecipients(args.therapistEmail),
-    subject: 'New ITR inquiry',
+    subject: `New Inquiry for ${args.therapistName}`,
     templateName: 'contact_inquiry_received',
-    textIntro: 'A new inquiry was submitted. Sign in to review it securely.',
-    htmlIntro: 'A new inquiry was submitted. Sign in to review it securely.',
+    textIntro: `${firstName}, you have a new inquiry. Sign in to read it securely.`,
+    htmlIntro: `${firstName}, you have a new inquiry. Tap the button below to sign in and read it securely.`,
   });
 }
 
@@ -78,10 +80,10 @@ async function sendInternalInquiryEmail(args: {
   const url = `${baseUrl()}/admin/inquiries/${args.inquiryId}`;
   const htmlBody = wrapEmailHtml(
     `<p style="margin:0 0 14px 0;">${args.htmlIntro}</p>` +
-      emailButton(url, 'Open inquiry'),
+      emailButton(url, 'View Message'),
     { preheader: args.subject },
   );
-  const textBody = `${args.textIntro}\n\nOpen inquiry: ${url}\n`;
+  const textBody = `${args.textIntro}\n\nView message: ${url}\n`;
   const { db } = await getDb();
 
   for (const to of args.recipients) {
@@ -89,6 +91,7 @@ async function sendInternalInquiryEmail(args: {
       const result = await sendEmail({
         to,
         subject: args.subject,
+        fromName: 'ITR Website',
         textBody,
         htmlBody,
       });
