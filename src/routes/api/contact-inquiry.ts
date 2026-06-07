@@ -330,7 +330,7 @@ function renderEmbeddedForm(args: {
       font-size: 0.94rem;
       font-weight: 450;
     }
-    .choice input { width: 16px; height: 16px; margin: 2px 0 0; padding: 0; }
+    .choice input { width: 16px; height: 16px; margin: 2px 0 0; padding: 0; accent-color: var(--teal); }
     .checks { display: grid; gap: 10px; }
     .hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
     button {
@@ -530,8 +530,8 @@ function renderEmbeddedForm(args: {
         <option value="">Select an option</option>
         <option value="Google Search">Google Search</option>
         <option value="Google Maps">Google Maps</option>
-        <option value="Gemini">Gemini</option>
         <option value="ChatGPT">ChatGPT</option>
+        <option value="Gemini">Gemini</option>
         <option value="Claude">Claude</option>
         <option value="Perplexity">Perplexity</option>
         <option value="Newsletter">Newsletter</option>
