@@ -280,6 +280,7 @@ function renderEmbeddedForm(args: {
       font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
     * { box-sizing: border-box; }
+    html { overflow: hidden; }
     html, body { margin: 0; background: transparent; color: var(--ink); }
     body { padding: 12px; }
     form {
@@ -289,7 +290,6 @@ function renderEmbeddedForm(args: {
       border: 1px solid var(--line);
       border-radius: var(--radius);
       padding: clamp(20px, 4vw, 34px);
-      box-shadow: 0 18px 45px oklch(30% 0.03 185 / 0.12);
     }
     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
     .field { display: grid; gap: 6px; }
