@@ -257,6 +257,11 @@ export const retreats = pgTable(
     actualHalfDays: integer('actual_half_days'),
     totalActualCents: integer('total_actual_cents'),
 
+    // Therapist's intended retreat start, captured at intake (optional).
+    // Informational only: does NOT gate state transitions. The authoritative
+    // calendar date remains scheduledStartDate, set later via confirmDates.
+    proposedStartDate: date('proposed_start_date'),
+
     scheduledStartDate: date('scheduled_start_date'),
     scheduledEndDate: date('scheduled_end_date'),
 

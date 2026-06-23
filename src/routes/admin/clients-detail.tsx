@@ -40,6 +40,8 @@ import {
   CardHeader,
   CardTitle,
   CsrfInput,
+  Field,
+  Input,
   Layout,
   LinkButton,
   PageHeader,
@@ -90,6 +92,7 @@ adminClientsDetailRoute.get('/:id', async (c) => {
       halfDayRateCents: retreats.halfDayRateCents,
       depositCents: retreats.depositCents,
       totalPlannedCents: retreats.totalPlannedCents,
+      proposedStartDate: retreats.proposedStartDate,
       scheduledStartDate: retreats.scheduledStartDate,
       scheduledEndDate: retreats.scheduledEndDate,
       createdAt: retreats.createdAt,
@@ -236,6 +239,15 @@ adminClientsDetailRoute.get('/:id', async (c) => {
 
   const depositPaid = audits.some((a) => a.eventType === 'deposit_paid');
   const showConfirmDates = row.state === 'awaiting_deposit' && depositPaid;
+  // Proposed start date is editable until the real dates are confirmed
+  // (scheduledStartDate set) and while the retreat is still live. After
+  // that it is shown read-only as a historical record. Hide the card
+  // entirely when there is nothing to edit and nothing was recorded.
+  const proposedEditable =
+    !row.scheduledStartDate &&
+    row.state !== 'cancelled' &&
+    row.state !== 'completed';
+  const showProposed = proposedEditable || !!row.proposedStartDate;
   const user = c.get('user');
   const csrfToken = ensureCsrfToken(c);
 
@@ -385,6 +397,42 @@ adminClientsDetailRoute.get('/:id', async (c) => {
             )}
           </CardContent>
         </Card>
+
+        {showProposed ? (
+          <Card class="mb-6">
+            <CardHeader>
+              <CardTitle>Proposed start date</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {proposedEditable ? (
+                <form
+                  method="post"
+                  action={`/admin/clients/${row.retreatId}/proposed-date`}
+                  class="flex flex-wrap items-end gap-3"
+                >
+                  <CsrfInput token={csrfToken} />
+                  <Field label="Intended start (optional)" for="proposed_start_date">
+                    <Input
+                      id="proposed_start_date"
+                      name="proposed_start_date"
+                      type="date"
+                      value={row.proposedStartDate ?? ''}
+                    />
+                  </Field>
+                  <Button type="submit" variant="outline">
+                    Save
+                  </Button>
+                </form>
+              ) : (
+                <p class="text-sm text-muted-foreground">
+                  {row.proposedStartDate
+                    ? `Originally proposed for ${row.proposedStartDate}. The confirmed dates below are authoritative.`
+                    : 'No proposed start date was recorded.'}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        ) : null}
 
         {row.scheduledStartDate && row.scheduledEndDate ? (
           <Card class="mb-6">
@@ -782,6 +830,49 @@ adminClientsDetailRoute.post('/:id/restore', async (c) => {
     actorId: user?.therapistId ?? null,
     eventType: 'retreat_restored',
     payload: {},
+  });
+  return c.redirect(`/admin/clients/${id}`);
+});
+
+// Set/clear the informational proposed start date. Editable only before
+// the real dates are confirmed (scheduled_start_date still null) and while
+// the retreat is live. Does NOT touch state - confirmDates stays the only
+// path to an authoritative scheduled date.
+adminClientsDetailRoute.post('/:id/proposed-date', async (c) => {
+  const id = c.req.param('id');
+  const form = await c.req.formData();
+  if (!verifyCsrfToken(c, String(form.get('_csrf') ?? ''))) {
+    return c.json({ error: 'csrf_mismatch' }, 403);
+  }
+  const { db } = await getDb();
+  const [row] = await db
+    .select({
+      therapistId: retreats.therapistId,
+      state: retreats.state,
+      scheduledStartDate: retreats.scheduledStartDate,
+    })
+    .from(retreats)
+    .where(eq(retreats.id, id));
+  if (!row) return c.notFound();
+  const user = c.get('user');
+  if (!therapistCanAccess(user, row.therapistId)) return c.notFound();
+  if (row.scheduledStartDate || row.state === 'cancelled' || row.state === 'completed') {
+    return c.json({ error: 'proposed_date_not_editable' }, 409);
+  }
+  const proposedStartDate = String(form.get('proposed_start_date') ?? '').trim() || null;
+  if (proposedStartDate && !/^\d{4}-\d{2}-\d{2}$/.test(proposedStartDate)) {
+    return c.json({ error: 'invalid_proposed_start_date' }, 400);
+  }
+  const now = new Date();
+  await db.update(retreats)
+    .set({ proposedStartDate, updatedAt: now })
+    .where(eq(retreats.id, id));
+  await db.insert(auditEvents).values({
+    retreatId: id,
+    actorType: 'therapist',
+    actorId: user?.therapistId ?? null,
+    eventType: 'retreat_proposed_date_set',
+    payload: { proposedStartDate },
   });
   return c.redirect(`/admin/clients/${id}`);
 });

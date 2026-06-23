@@ -80,6 +80,7 @@ interface DashRow {
   retreatId: string;
   state: string;
   program: string;
+  proposedStartDate: string | null;
   scheduledStartDate: string | null;
   scheduledEndDate: string | null;
   totalPlannedCents: number;
@@ -152,6 +153,7 @@ adminDashboardRoute.get('/', async (c) => {
       retreatId: retreats.id,
       state: retreats.state,
       program: retreats.program,
+      proposedStartDate: retreats.proposedStartDate,
       scheduledStartDate: retreats.scheduledStartDate,
       scheduledEndDate: retreats.scheduledEndDate,
       totalPlannedCents: retreats.totalPlannedCents,
@@ -328,7 +330,9 @@ adminDashboardRoute.get('/', async (c) => {
                   const dates =
                     r.scheduledStartDate && r.scheduledEndDate
                       ? `${r.scheduledStartDate} → ${r.scheduledEndDate}`
-                      : '-';
+                      : r.proposedStartDate
+                        ? `~${r.proposedStartDate} (proposed)`
+                        : '-';
                   const totalLabel = r.totalActualCents
                     ? `${formatCents(r.totalActualCents)}`
                     : `${formatCents(r.totalPlannedCents)}`;
