@@ -282,6 +282,13 @@ adminClientsNewRoute.get('/', async (c) => {
                   required
                 />
               </Field>
+              <Field
+                label="Proposed start date"
+                for="proposed_start_date"
+                hint="Optional. Intended date for planning - confirm the real dates later."
+              >
+                <Input id="proposed_start_date" name="proposed_start_date" type="date" />
+              </Field>
             </CardContent>
           </Card>
 
@@ -356,6 +363,8 @@ adminClientsNewRoute.post('/', async (c) => {
   const stateOfResidence = get('state_of_residence').trim() || null;
   const plannedFullDays = getNum('planned_full_days');
   const plannedHalfDays = getNum('planned_half_days');
+  // Optional intended start date (informational; never gates state).
+  const proposedStartDate = get('proposed_start_date').trim() || null;
   // v0.28.21: payment method is no longer collected on the new-client
   // form. The client picks card vs ACH at /c/<token>/checkout, where the
   // chooser applies the ACH discount at session-creation time. The DB
@@ -433,6 +442,9 @@ adminClientsNewRoute.post('/', async (c) => {
     plannedFullDays + plannedHalfDays > 30
   ) {
     return c.json({ error: 'invalid_day_counts' }, 400);
+  }
+  if (proposedStartDate && !/^\d{4}-\d{2}-\d{2}$/.test(proposedStartDate)) {
+    return c.json({ error: 'invalid_proposed_start_date' }, 400);
   }
 
   const { db } = await getDb();
@@ -551,6 +563,7 @@ adminClientsNewRoute.post('/', async (c) => {
           program,
           plannedFullDays,
           plannedHalfDays,
+          proposedStartDate,
           paymentMethod,
           fullDayRateCents,
           halfDayRateCents,

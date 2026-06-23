@@ -41,6 +41,7 @@ adminConfirmDatesRoute.get('/:id/confirm-dates', async (c) => {
       retreatId: retreats.id,
       state: retreats.state,
       therapistId: retreats.therapistId,
+      proposedStartDate: retreats.proposedStartDate,
       plannedFullDays: retreats.plannedFullDays,
       plannedHalfDays: retreats.plannedHalfDays,
       clientFirstName: clients.firstName,
@@ -106,8 +107,20 @@ adminConfirmDatesRoute.get('/:id/confirm-dates', async (c) => {
             <CardContent>
               <form method="post" class="space-y-4">
                 <CsrfInput token={csrfToken} />
-                <Field label="Start date" for="start_date">
-                  <Input id="start_date" name="start_date" type="date" required />
+                <Field
+                  label="Start date"
+                  for="start_date"
+                  {...(row.proposedStartDate
+                    ? { hint: `Proposed: ${row.proposedStartDate}` }
+                    : {})}
+                >
+                  <Input
+                    id="start_date"
+                    name="start_date"
+                    type="date"
+                    value={row.proposedStartDate ?? ''}
+                    required
+                  />
                 </Field>
                 <Field label="End date" for="end_date">
                   <Input id="end_date" name="end_date" type="date" required />
