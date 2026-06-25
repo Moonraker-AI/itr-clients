@@ -58,6 +58,10 @@ type TherapistSeed = {
   // Bambi is the only exception today at 100. Stored as string so the
   // numeric column round-trips exactly.
   therapistPayoutPct?: string;
+  // Whether this person is a selectable therapist on the public contact-inquiry
+  // form. Defaults true. Set false for platform-owner admins (Chris) who must
+  // stay active to log in but are not treating therapists.
+  acceptsInquiries?: boolean;
 };
 
 const THERAPISTS: TherapistSeed[] = [
@@ -74,6 +78,9 @@ const THERAPISTS: TherapistSeed[] = [
     // so a flip to "platform takes a cut on every charge -> Connect
     // transfer to Chris" is a flag-flip, not a schema change.
     stripeConnectAccountId: 'acct_1GyMnvBQh6FUgIfx',
+    // Platform owner, not a treating therapist: keep him off the public
+    // contact form while leaving his admin login (active) intact.
+    acceptsInquiries: false,
   },
   {
     slug: 'amy-shuman',
@@ -199,6 +206,7 @@ async function main() {
         kairHalfDayCents: t.kairHalfDayCents ?? null,
         stripeConnectAccountId: t.stripeConnectAccountId ?? null,
         therapistPayoutPct: t.therapistPayoutPct ?? '60',
+        acceptsInquiries: t.acceptsInquiries ?? true,
       };
       await db
         .insert(therapists)
@@ -217,6 +225,7 @@ async function main() {
             kairHalfDayCents: therapistRow.kairHalfDayCents,
             stripeConnectAccountId: therapistRow.stripeConnectAccountId,
             therapistPayoutPct: therapistRow.therapistPayoutPct,
+            acceptsInquiries: therapistRow.acceptsInquiries,
             active: true,
           },
         });

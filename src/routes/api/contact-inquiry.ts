@@ -37,7 +37,7 @@ contactInquiryRoute.get('/form', async (c) => {
       fullName: therapists.fullName,
     })
     .from(therapists)
-    .where(eq(therapists.active, true))
+    .where(and(eq(therapists.active, true), eq(therapists.acceptsInquiries, true)))
     .orderBy(asc(therapists.fullName));
 
   return c.html(renderEmbeddedForm({
@@ -99,7 +99,11 @@ contactInquiryRoute.post(
         fullName: therapists.fullName,
       })
       .from(therapists)
-      .where(and(eq(therapists.slug, data.therapistSlug), eq(therapists.active, true)))
+      .where(and(
+        eq(therapists.slug, data.therapistSlug),
+        eq(therapists.active, true),
+        eq(therapists.acceptsInquiries, true),
+      ))
       .limit(1);
     if (!therapist) {
       return c.json({ error: 'therapist_not_found' }, 400);
