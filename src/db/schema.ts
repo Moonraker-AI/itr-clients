@@ -146,6 +146,12 @@ export const therapists = pgTable('therapists', {
     .notNull()
     .default('60'),
   active: boolean('active').notNull().default(true),
+  // Whether this person appears as a selectable therapist on the public
+  // contact-inquiry form (and may receive inquiries). Separate from `active`:
+  // `active` gates auth/roster membership, so platform-owner admins (e.g.
+  // Chris) must stay active to log in but should NOT be a public contact
+  // option. Real therapists who are also admins (e.g. Bambi) keep this true.
+  acceptsInquiries: boolean('accepts_inquiries').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
