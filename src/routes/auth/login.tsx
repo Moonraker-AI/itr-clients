@@ -135,7 +135,7 @@ adminLoginRoute.get('/login', (c) => {
                 id="status"
                 role="status"
                 aria-live="polite"
-                class="text-sm text-destructive min-h-[1.25rem]"
+                class="text-sm text-primary min-h-[1.25rem]"
               ></p>
               {error ? (
                 <Alert variant="destructive">
