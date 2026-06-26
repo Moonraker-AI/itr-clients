@@ -15,8 +15,15 @@
   provider.setCustomParameters({ hd: 'intensivetherapyretreat.com' });
   var returnTo = btn.dataset.returnTo;
   var status = document.getElementById('status');
+  // Progress messages stay on-brand (text-primary); only real failures turn
+  // red (text-destructive) so "Signing in…" doesn't read as an error.
+  function setStatus(text, isError) {
+    status.textContent = text;
+    status.classList.toggle('text-destructive', !!isError);
+    status.classList.toggle('text-primary', !isError);
+  }
   btn.addEventListener('click', async function () {
-    status.textContent = 'Signing in…';
+    setStatus('Signing in…', false);
     try {
       // eslint-disable-next-line no-undef
       var result = await firebase.auth().signInWithPopup(provider);
@@ -30,7 +37,7 @@
         var data = await res.json().catch(function () {
           return {};
         });
-        status.textContent = 'Sign-in failed: ' + (data.error || res.status);
+        setStatus('Sign-in failed: ' + (data.error || res.status), true);
         // eslint-disable-next-line no-undef
         await firebase
           .auth()
@@ -45,7 +52,7 @@
         .catch(function () {});
       window.location.href = returnTo;
     } catch (err) {
-      status.textContent = err && err.message ? err.message : 'Sign-in failed.';
+      setStatus(err && err.message ? err.message : 'Sign-in failed.', true);
     }
   });
 })();
