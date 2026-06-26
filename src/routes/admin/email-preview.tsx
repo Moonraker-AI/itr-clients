@@ -72,7 +72,7 @@ adminEmailPreviewRoute.get('/', async (c) => {
     : 'consent_package_sent';
 
   const baseUrl = process.env.PUBLIC_BASE_URL ?? `${c.req.url.split('/admin')[0]}`;
-  const composed = composeNotification(sampleArgs(event, baseUrl));
+  const composed = composeNotification(sampleArgs(event, baseUrl), 'Bambi Rattner');
   const user = c.get('user');
 
   // iframe srcdoc so the body's CSS (none today, but leaves headroom for

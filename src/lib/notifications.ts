@@ -107,8 +107,10 @@ export interface Composed {
  * frozen hex snapshot and updated alongside theme bumps.
  */
 const EMAIL_BRAND = {
-  frame: '#1c2326',          // dark gray - matches /admin dark-mode bg
-  frameText: '#f0ede2',      // cream-on-gray text in bars
+  frame: '#18403d',          // deep teal-green - primary brand color from
+                             // intensivetherapyretreat.com (its theme-color);
+                             // lighter + greener than the old #1c2326 gray.
+  frameText: '#f0ede2',      // cream-on-green text in bars (good contrast)
   contentBg: '#faf9f4',      // cream content area
   contentText: '#2c3a3c',    // dark slate body text
   muted: '#6b7c7e',
@@ -201,15 +203,6 @@ export function wrapEmailHtml(
 }
 
 /**
- * Style a body link consistently with the brand palette. Used in the
- * per-event htmlBody fragments so plain-text-style anchors don't appear
- * blue-on-cream in Gmail.
- */
-function emailLink(href: string): string {
-  return `<a href="${esc(href)}" style="color:${EMAIL_BRAND.link};text-decoration:underline;">${esc(href)}</a>`;
-}
-
-/**
  * Email-client-safe CTA button. Uses a tiny presentation table rather than
  * relying on modern CSS so Gmail, Outlook, Apple Mail, and mobile webviews
  * render a stable button instead of exposing a raw URL in the HTML body.
@@ -231,14 +224,17 @@ export function emailButton(href: string, label: string): string {
  * Exposed so the admin /admin/email-preview route can render the same
  * output a real send would, using fake-but-shaped sample inputs.
  */
-export function composeNotification(args: NotifyArgs): Composed {
-  return compose(args);
+export function composeNotification(args: NotifyArgs, therapistName?: string): Composed {
+  return compose(args, therapistName);
 }
 
-function compose(args: NotifyArgs): Composed {
+function compose(args: NotifyArgs, therapistName?: string): Composed {
   const link = args.event === 'consent_package_sent' ? args.clientPortalUrl : args.adminUrl;
-  const linkHtml = emailLink(link);
-  const consentCtaHtml = emailButton(link, 'Review and sign consents');
+  // Team-facing emails name the assigned therapist (a provider, NOT PHI) so an
+  // admin knows whose retreat the alert is about at a glance. HTML-escaped for
+  // the body; plain for the subject/text.
+  const whoHtml = therapistName ? `<strong>${esc(therapistName)}</strong>'s retreat` : 'a retreat';
+  const whoText = therapistName ? `${therapistName}'s retreat` : 'a retreat';
   // Append retreat-id tail to internal subjects so an admin scanning their
   // inbox can correlate "this alert is about which retreat?" without
   // opening the body. retreatId is an opaque uuid - NOT PHI - so this
@@ -246,6 +242,9 @@ function compose(args: NotifyArgs): Composed {
   // client-facing consent_package_sent event so the client doesn't see
   // an internal id appended to their personal email.
   const tag = `[ret #${args.retreatId.slice(0, 8)}]`;
+  // Every event renders a real CTA button (no more raw-URL links).
+  const intro = (html: string): string => `<p style="margin:0 0 4px 0;">${html}</p>`;
+  const body = (html: string, label: string): string => intro(html) + emailButton(link, label);
   let raw: { subject: string; textBody: string; htmlInner: string; templateName: string; preheader?: string };
   switch (args.event) {
     case 'consent_package_sent':
@@ -260,80 +259,80 @@ function compose(args: NotifyArgs): Composed {
         htmlInner:
           `<p style="margin:0 0 14px 0;">Hi ${esc(args.clientFirstName)},</p>` +
           `<p style="margin:0 0 14px 0;">Your therapist has prepared your consent package. Please review and sign using the secure button below. It is unique to you.</p>` +
-          consentCtaHtml +
+          emailButton(link, 'Review and sign consents') +
           `<p style="margin:0;">If you have questions, reply to this email and our team will be in touch.</p>`,
         templateName: 'consent_package_sent',
       };
       break;
     case 'consents_signed':
       raw = {
-        subject: `Consents signed ${tag}`,
-        textBody: `All required consents have been signed. ${link}\n`,
-        htmlInner: `<p style="margin:0 0 14px 0;">All required consents have been signed.</p><p style="margin:0;">${linkHtml}</p>`,
+        subject: `Consents signed for ${whoText} ${tag}`,
+        textBody: `All required consents have been signed for ${whoText}.\n\nView retreat: ${link}\n`,
+        htmlInner: body(`All required consents have been signed for ${whoHtml}.`, 'View retreat'),
         templateName: 'consents_signed',
       };
       break;
     case 'deposit_paid':
       raw = {
-        subject: `Deposit paid - please confirm dates ${tag}`,
-        textBody: `Deposit paid. Please confirm dates: ${link}\n`,
-        htmlInner: `<p style="margin:0 0 14px 0;">Deposit paid. Please confirm dates.</p><p style="margin:0;">${linkHtml}</p>`,
+        subject: `Deposit paid for ${whoText} - confirm dates ${tag}`,
+        textBody: `A deposit was paid for ${whoText}. Please confirm the retreat dates.\n\nConfirm dates: ${link}\n`,
+        htmlInner: body(`A deposit was paid for ${whoHtml}. Please confirm the retreat dates.`, 'Confirm dates'),
         templateName: 'deposit_paid',
       };
       break;
     case 'dates_confirmed':
       raw = {
-        subject: `Retreat dates confirmed ${tag}`,
-        textBody: `Retreat dates have been confirmed. ${link}\n`,
-        htmlInner: `<p style="margin:0 0 14px 0;">Retreat dates have been confirmed.</p><p style="margin:0;">${linkHtml}</p>`,
+        subject: `Dates confirmed for ${whoText} ${tag}`,
+        textBody: `Retreat dates have been confirmed for ${whoText}.\n\nView retreat: ${link}\n`,
+        htmlInner: body(`Retreat dates have been confirmed for ${whoHtml}.`, 'View retreat'),
         templateName: 'dates_confirmed',
       };
       break;
     case 'in_progress':
       raw = {
-        subject: `Retreat in progress ${tag}`,
-        textBody: `Retreat marked in progress. ${link}\n`,
-        htmlInner: `<p style="margin:0 0 14px 0;">Retreat marked in progress.</p><p style="margin:0;">${linkHtml}</p>`,
+        subject: `Retreat in progress for ${whoText} ${tag}`,
+        textBody: `${whoText} has been marked in progress.\n\nView retreat: ${link}\n`,
+        htmlInner: body(`${whoHtml} has been marked in progress.`, 'View retreat'),
         templateName: 'in_progress',
       };
       break;
     case 'completion_submitted':
       raw = {
-        subject: `Retreat completion submitted ${tag}`,
-        textBody: `Therapist submitted completion form. ${link}\n`,
-        htmlInner: `<p style="margin:0 0 14px 0;">Therapist submitted completion form.</p><p style="margin:0;">${linkHtml}</p>`,
+        subject: `Completion submitted for ${whoText} ${tag}`,
+        textBody: `A completion form was submitted for ${whoText}.\n\nView retreat: ${link}\n`,
+        htmlInner: body(`A completion form was submitted for ${whoHtml}.`, 'View retreat'),
         templateName: 'completion_submitted',
       };
       break;
     case 'final_charged':
       raw = {
-        subject: `Final balance charged ${tag}`,
-        textBody: `Final balance charged successfully. ${link}\n`,
-        htmlInner: `<p style="margin:0 0 14px 0;">Final balance charged successfully.</p><p style="margin:0;">${linkHtml}</p>`,
+        subject: `Final balance charged for ${whoText} ${tag}`,
+        textBody: `The final balance was charged successfully for ${whoText}.\n\nView retreat: ${link}\n`,
+        htmlInner: body(`The final balance was charged successfully for ${whoHtml}.`, 'View retreat'),
         templateName: 'final_charged',
       };
       break;
     case 'final_charge_failed':
       raw = {
-        subject: `Action needed: final charge failed ${tag}`,
-        textBody: `Final charge failed for a retreat. Action needed: ${link}\n`,
-        htmlInner: `<p style="margin:0 0 14px 0;">Final charge failed for a retreat. Action needed.</p><p style="margin:0;">${linkHtml}</p>`,
+        subject: `Action needed: final charge failed for ${whoText} ${tag}`,
+        textBody: `The final charge failed for ${whoText}. Action needed.\n\nResolve now: ${link}\n`,
+        htmlInner: body(`The final charge failed for ${whoHtml}. Action needed.`, 'Resolve now'),
         templateName: 'final_charge_failed',
       };
       break;
     case 'final_charge_retry_exhausted':
       raw = {
-        subject: `Action needed: final charge retry attempts exhausted ${tag}`,
-        textBody: `All retry attempts for the final charge have failed (3/3). Manual recovery required: ${link}\n`,
-        htmlInner: `<p style="margin:0 0 14px 0;">All retry attempts for the final charge have failed (3/3). Manual recovery required.</p><p style="margin:0;">${linkHtml}</p>`,
+        subject: `Action needed: final charge retries exhausted for ${whoText} ${tag}`,
+        textBody: `All retry attempts for the final charge on ${whoText} have failed (3/3). Manual recovery required.\n\nRecover manually: ${link}\n`,
+        htmlInner: body(`All retry attempts for the final charge on ${whoHtml} have failed (3/3). Manual recovery required.`, 'Recover manually'),
         templateName: 'final_charge_retry_exhausted',
       };
       break;
     case 'cancelled':
       raw = {
-        subject: `Retreat cancelled ${tag}`,
-        textBody: `Retreat cancelled. ${link}\n`,
-        htmlInner: `<p style="margin:0 0 14px 0;">Retreat cancelled.</p><p style="margin:0;">${linkHtml}</p>`,
+        subject: `Retreat cancelled for ${whoText} ${tag}`,
+        textBody: `${whoText} was cancelled.\n\nView retreat: ${link}\n`,
+        htmlInner: body(`${whoHtml} was cancelled.`, 'View retreat'),
         templateName: 'cancelled',
       };
       break;
@@ -347,8 +346,22 @@ function compose(args: NotifyArgs): Composed {
 }
 
 export async function notify(args: NotifyArgs): Promise<void> {
-  const composed = compose(args);
   const { db } = await getDb();
+
+  // Resolve the retreat's assigned therapist (a provider, NOT PHI) for
+  // retreat-scoped events: the name personalises the email subject + body,
+  // and the email is added to recipients for action-required events below.
+  let therapist: { name: string; email: string } | undefined;
+  if (args.event !== 'consent_package_sent') {
+    const [t] = await db
+      .select({ name: therapists.fullName, email: therapists.email })
+      .from(retreats)
+      .innerJoin(therapists, eq(retreats.therapistId, therapists.id))
+      .where(eq(retreats.id, args.retreatId));
+    if (t) therapist = t;
+  }
+
+  const composed = compose(args, therapist?.name);
 
   const recipients = new Set<string>();
 
@@ -370,15 +383,10 @@ export async function notify(args: NotifyArgs): Promise<void> {
     for (const r of internal) recipients.add(r.email);
   }
 
-  if (ACTION_REQUIRED_EVENTS.has(args.event)) {
+  if (ACTION_REQUIRED_EVENTS.has(args.event) && therapist?.email) {
     // Loop in only the retreat's assigned therapist - not every active
-    // therapist. Resolved per-retreat via retreat.therapist_id.
-    const [t] = await db
-      .select({ email: therapists.email })
-      .from(retreats)
-      .innerJoin(therapists, eq(retreats.therapistId, therapists.id))
-      .where(eq(retreats.id, args.retreatId));
-    if (t?.email) recipients.add(t.email);
+    // therapist. Resolved above via retreat.therapist_id.
+    recipients.add(therapist.email);
   }
 
   if (args.event === 'consent_package_sent') {
