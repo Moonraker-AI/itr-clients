@@ -39,7 +39,7 @@ import {
 import { buildIcs } from './ics.js';
 import { notify } from './notifications.js';
 import { log } from './phi-redactor.js';
-import { chargeFinalBalance } from './stripe.js';
+import { chargeFinalBalance, findPaidDepositSession } from './stripe.js';
 
 export const RETREAT_STATES = [
   'draft',
@@ -1098,6 +1098,78 @@ export async function retryFailedCharge(args: {
       });
     client.release();
   }
+}
+
+export type ReconcileDepositOutcome =
+  | 'reconciled'
+  | 'already_recorded'
+  | 'no_customer'
+  | 'no_paid_session'
+  | 'retreat_not_found';
+
+/**
+ * Deposit safety net (v0.29.x). Reconcile a retreat's deposit straight from
+ * Stripe instead of waiting on the webhook. Looks for a PAID deposit
+ * checkout session on the client's Stripe customer and, if found, runs the
+ * same idempotent markDepositPaid the webhook would have.
+ *
+ * Backs three callers: the success page (self-heal on the client's return),
+ * the reconcile cron (sweeps every stuck `awaiting_deposit` retreat, incl.
+ * ACH that cleared days after the client left), and the admin
+ * "Check Stripe for payment" button. Idempotent + cheap: a succeeded deposit
+ * row short-circuits before any Stripe call.
+ */
+export async function reconcileDepositForRetreat(
+  retreatId: string,
+  actor: Actor,
+): Promise<{ outcome: ReconcileDepositOutcome }> {
+  const { db } = await getDb();
+  const [r] = await db
+    .select({ id: retreats.id, clientId: retreats.clientId })
+    .from(retreats)
+    .where(eq(retreats.id, retreatId));
+  if (!r) return { outcome: 'retreat_not_found' };
+
+  // Already recorded? Nothing to do, and skip the Stripe round-trip.
+  const [existing] = await db
+    .select({ id: payments.id })
+    .from(payments)
+    .where(
+      and(
+        eq(payments.retreatId, retreatId),
+        eq(payments.kind, 'deposit'),
+        eq(payments.status, 'succeeded'),
+      ),
+    )
+    .limit(1);
+  if (existing) return { outcome: 'already_recorded' };
+
+  const [sc] = await db
+    .select({ stripeCustomerId: stripeCustomers.stripeCustomerId })
+    .from(stripeCustomers)
+    .where(eq(stripeCustomers.clientId, r.clientId));
+  if (!sc) return { outcome: 'no_customer' };
+
+  const found = await findPaidDepositSession({
+    stripeCustomerId: sc.stripeCustomerId,
+    retreatId,
+  });
+  if (!found) return { outcome: 'no_paid_session' };
+
+  await transitions.markDepositPaid({
+    retreatId,
+    actor,
+    stripePaymentIntentId: found.paymentIntentId,
+    ...(found.chargeId ? { stripeChargeId: found.chargeId } : {}),
+    amountCents: found.amountCents,
+    ...(found.paymentMethodId ? { stripePaymentMethodId: found.paymentMethodId } : {}),
+    ...(found.paymentMethodType ? { paymentMethodType: found.paymentMethodType } : {}),
+  });
+  log.info('deposit_reconciled', {
+    retreatId,
+    stripePaymentIntentId: found.paymentIntentId,
+  });
+  return { outcome: 'reconciled' };
 }
 
 function retreatIdToLockKey(retreatId: string): number {

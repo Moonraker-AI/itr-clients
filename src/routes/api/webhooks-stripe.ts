@@ -95,7 +95,15 @@ stripeWebhookRoute.post('/', bodyLimit({
 
 async function dispatch(event: Stripe.Event): Promise<void> {
   switch (event.type) {
-    case 'checkout.session.completed': {
+    // `completed` fires immediately for card (payment_status=paid) AND for
+    // ACH/delayed methods (payment_status=unpaid|processing). For the delayed
+    // case the money lands later and Stripe fires `async_payment_succeeded`
+    // with payment_status=paid. Both route here; the payment_status guard
+    // below skips the not-yet-paid `completed` and lets the async success
+    // through. Without the async case, EVERY ACH deposit was stranded in
+    // awaiting_deposit (the old handler only listened for `completed`).
+    case 'checkout.session.completed':
+    case 'checkout.session.async_payment_succeeded': {
       const session = event.data.object as Stripe.Checkout.Session;
       const meta = session.metadata ?? {};
       const retreatId = meta['retreat_id'];
@@ -212,6 +220,19 @@ async function dispatch(event: Stripe.Event): Promise<void> {
         amountCents: pi.amount,
         attempt,
       });
+      return;
+    }
+    case 'checkout.session.async_payment_failed': {
+      // ACH/delayed deposit bounced after the client left checkout. The
+      // retreat correctly stays in awaiting_deposit; log loud so ops can
+      // re-engage the client (they likely believe they paid).
+      const session = event.data.object as Stripe.Checkout.Session;
+      const meta = session.metadata ?? {};
+      if (meta['payment_kind'] === 'deposit') {
+        log.warn('stripe_webhook_deposit_async_payment_failed', {
+          retreatId: meta['retreat_id'] ?? null,
+        });
+      }
       return;
     }
     case 'transfer.created':

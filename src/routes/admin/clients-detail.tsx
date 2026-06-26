@@ -250,6 +250,7 @@ adminClientsDetailRoute.get('/:id', async (c) => {
   const showProposed = proposedEditable || !!row.proposedStartDate;
   const user = c.get('user');
   const csrfToken = ensureCsrfToken(c);
+  const reconcileResult = c.req.query('reconcile');
 
   return c.html(
     <Layout title={`Retreat ${row.retreatId.slice(0, 8)} - ITR Clients`}>
@@ -457,6 +458,58 @@ adminClientsDetailRoute.get('/:id', async (c) => {
               <LinkButton href={`/admin/clients/${row.retreatId}/confirm-dates`}>
                 Confirm retreat dates
               </LinkButton>
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {reconcileResult ? (
+          <Alert
+            variant={
+              reconcileResult === 'reconciled' || reconcileResult === 'already_recorded'
+                ? 'default'
+                : 'destructive'
+            }
+            class="mb-6"
+          >
+            <AlertTitle>
+              {reconcileResult === 'reconciled'
+                ? 'Deposit found at Stripe and recorded'
+                : reconcileResult === 'already_recorded'
+                  ? 'Deposit was already recorded'
+                  : reconcileResult === 'no_paid_session'
+                    ? 'No paid deposit found at Stripe yet'
+                    : reconcileResult === 'no_customer'
+                      ? 'Client has not started checkout'
+                      : 'Reconcile failed'}
+            </AlertTitle>
+            <AlertDescription>
+              {reconcileResult === 'no_paid_session'
+                ? 'Card payments clear instantly; ACH takes 1-4 business days. Try again once it clears.'
+                : reconcileResult === 'error'
+                  ? 'See logs for details.'
+                  : ''}
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
+        {row.state === 'awaiting_deposit' && !depositPaid ? (
+          <Card class="mb-6">
+            <CardHeader>
+              <CardTitle>Deposit not yet recorded</CardTitle>
+            </CardHeader>
+            <CardContent class="space-y-3">
+              <p class="text-sm text-muted-foreground">
+                If the client paid through their portal link but this still
+                shows awaiting deposit, pull the payment straight from Stripe.
+                Safe to run repeatedly.
+              </p>
+              <form
+                method="post"
+                action={`/admin/clients/${row.retreatId}/reconcile-deposit`}
+              >
+                <CsrfInput token={csrfToken} />
+                <Button type="submit">Check Stripe for payment</Button>
+              </form>
             </CardContent>
           </Card>
         ) : null}

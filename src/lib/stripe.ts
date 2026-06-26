@@ -828,4 +828,78 @@ export async function getCheckoutSession(
   });
 }
 
+/**
+ * Reconciliation helper (deposit safety net, v0.29.x). Find the most recent
+ * PAID deposit checkout session for a customer + retreat and return the
+ * fields markDepositPaid needs. Returns null when no paid deposit session
+ * exists yet (ACH still clearing, or the client never finished checkout).
+ *
+ * This mirrors exactly what the checkout.session.completed webhook derives,
+ * so the cron / success-page / admin-reconcile paths all converge on the
+ * same idempotent markDepositPaid call. It exists because the deposit flow
+ * was previously 100% webhook-dependent: a single missed or never-delivered
+ * event (or an async ACH event the old handler ignored) stranded the client
+ * in `awaiting_deposit` forever even though Stripe had taken the money.
+ */
+export interface ReconciledDepositSession {
+  paymentIntentId: string;
+  chargeId?: string;
+  paymentMethodId?: string;
+  paymentMethodType?: string;
+  amountCents: number;
+}
+
+export async function findPaidDepositSession(args: {
+  stripeCustomerId: string;
+  retreatId: string;
+}): Promise<ReconciledDepositSession | null> {
+  if (dryRun()) return null;
+  const client = getClient()!;
+  // Stripe returns sessions newest-first. 10 is generous: a retreat has at
+  // most a handful of checkout attempts (card then ACH, retries on cancel).
+  const sessions = await client.checkout.sessions.list({
+    customer: args.stripeCustomerId,
+    limit: 10,
+  });
+  const match = sessions.data.find(
+    (s) =>
+      s.payment_status === 'paid' &&
+      s.metadata?.['payment_kind'] === 'deposit' &&
+      s.metadata?.['retreat_id'] === args.retreatId,
+  );
+  if (!match) return null;
+
+  const piId =
+    typeof match.payment_intent === 'string'
+      ? match.payment_intent
+      : match.payment_intent?.id;
+  if (!piId) return null;
+
+  // Re-retrieve with expansion so payment_method + latest_charge resolve to
+  // full objects (list-expand depth doesn't reach session sub-objects).
+  const pi = await retrievePaymentIntent(piId);
+  if (!pi) return null;
+
+  let chargeId: string | undefined;
+  if (typeof pi.latest_charge === 'string') chargeId = pi.latest_charge;
+  else if (pi.latest_charge) chargeId = pi.latest_charge.id;
+
+  let paymentMethodId: string | undefined;
+  let paymentMethodType: string | undefined;
+  if (typeof pi.payment_method === 'string') {
+    paymentMethodId = pi.payment_method;
+  } else if (pi.payment_method) {
+    paymentMethodId = pi.payment_method.id;
+    paymentMethodType = pi.payment_method.type;
+  }
+
+  return {
+    paymentIntentId: pi.id,
+    ...(chargeId ? { chargeId } : {}),
+    ...(paymentMethodId ? { paymentMethodId } : {}),
+    ...(paymentMethodType ? { paymentMethodType } : {}),
+    amountCents: match.amount_total ?? pi.amount_received ?? pi.amount,
+  };
+}
+
 export { StripePhiViolation };
