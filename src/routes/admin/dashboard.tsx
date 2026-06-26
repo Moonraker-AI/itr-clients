@@ -18,7 +18,7 @@ import { getDb } from '../../db/client.js';
 import { clients, retreats, therapists } from '../../db/schema.js';
 import { ensureCsrfToken } from '../../lib/csrf.js';
 import { formatCents } from '../../lib/pricing.js';
-import { RETREAT_STATES, type RetreatState } from '../../lib/state-machine.js';
+import { RETREAT_STATES, retreatStatusLabel, type RetreatState } from '../../lib/state-machine.js';
 import {
   AdminShell,
   Alert,
@@ -211,7 +211,7 @@ adminDashboardRoute.get('/', async (c) => {
           : state === 'draft' || state === 'pending'
             ? 'secondary'
             : 'default';
-    return <Badge variant={variant}>{state}</Badge>;
+    return <Badge variant={variant}>{retreatStatusLabel(state)}</Badge>;
   };
 
   return c.html(
@@ -255,7 +255,7 @@ adminDashboardRoute.get('/', async (c) => {
                   <option value="">all</option>
                   {RETREAT_STATES.map((s) => (
                     <option value={s} selected={s === stateFilter}>
-                      {s}
+                      {retreatStatusLabel(s)}
                     </option>
                   ))}
                 </Select>

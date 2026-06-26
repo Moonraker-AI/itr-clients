@@ -10,7 +10,7 @@ import { auditEvents, clients, retreats } from '../../db/schema.js';
 import { therapistCanAccess } from '../../lib/auth.js';
 import { ensureCsrfToken, verifyCsrfToken } from '../../lib/csrf.js';
 import { log } from '../../lib/phi-redactor.js';
-import { transitions } from '../../lib/state-machine.js';
+import { retreatStatusLabel, transitions } from '../../lib/state-machine.js';
 import {
   AdminShell,
   Alert,
@@ -75,12 +75,12 @@ adminConfirmDatesRoute.get('/:id/confirm-dates', async (c) => {
         </PageHeader>
 
         <div class="max-w-2xl space-y-4">
-          {row.state !== 'awaiting_deposit' ? (
+          {row.state !== 'awaiting_dates' && row.state !== 'awaiting_deposit' ? (
             <Alert variant="destructive">
               <AlertTitle>Wrong state</AlertTitle>
               <AlertDescription>
-                State is <code class="font-mono">{row.state}</code> - only{' '}
-                <code class="font-mono">awaiting_deposit</code> can confirm dates.
+                Status is <code class="font-mono">{retreatStatusLabel(row.state)}</code> - only a
+                retreat awaiting dates can confirm dates.
               </AlertDescription>
             </Alert>
           ) : null}

@@ -28,6 +28,7 @@ import { therapistCanAccess } from '../../lib/auth.js';
 import { getTemplate, sortRequiredConsents } from '../../lib/consent-templates.js';
 import { ensureCsrfToken, verifyCsrfToken } from '../../lib/csrf.js';
 import { formatCents } from '../../lib/pricing.js';
+import { retreatStatusLabel } from '../../lib/state-machine.js';
 import {
   AdminShell,
   Alert,
@@ -238,7 +239,11 @@ adminClientsDetailRoute.get('/:id', async (c) => {
   const consentsUrl = `${publicUrl}/consents`;
 
   const depositPaid = audits.some((a) => a.eventType === 'deposit_paid');
-  const showConfirmDates = row.state === 'awaiting_deposit' && depositPaid;
+  // v0.29.x: a paid deposit now moves the retreat to awaiting_dates, so that
+  // is the primary state for confirming dates. The legacy awaiting_deposit +
+  // depositPaid case stays for any in-flight pre-v0.28.27 retreats.
+  const showConfirmDates =
+    row.state === 'awaiting_dates' || (row.state === 'awaiting_deposit' && depositPaid);
   // Proposed start date is editable until the real dates are confirmed
   // (scheduledStartDate set) and while the retreat is still live. After
   // that it is shown read-only as a historical record. Hide the card
@@ -284,12 +289,12 @@ adminClientsDetailRoute.get('/:id', async (c) => {
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
           <Card>
             <CardHeader>
-              <CardTitle class="text-sm text-muted-foreground">State</CardTitle>
+              <CardTitle class="text-sm text-muted-foreground">Status</CardTitle>
             </CardHeader>
             <CardContent>
               <div class="flex flex-wrap gap-2">
                 <Badge variant="default" class="text-sm px-3 py-1">
-                  {row.state}
+                  {retreatStatusLabel(row.state)}
                 </Badge>
                 {row.archivedAt ? (
                   <Badge variant="secondary" class="text-sm px-3 py-1">
@@ -457,6 +462,30 @@ adminClientsDetailRoute.get('/:id', async (c) => {
             <CardContent>
               <LinkButton href={`/admin/clients/${row.retreatId}/confirm-dates`}>
                 Confirm retreat dates
+              </LinkButton>
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {depositPaid &&
+        row.state !== 'completed' &&
+        row.state !== 'cancelled' &&
+        row.state !== 'awaiting_final_charge' ? (
+          <Card class="mb-6 border-primary">
+            <CardHeader>
+              <CardTitle>Charge final balance</CardTitle>
+            </CardHeader>
+            <CardContent class="space-y-3">
+              <p class="text-sm text-muted-foreground">
+                Charge the client's saved card or bank for the remaining balance.
+                You enter the exact amount, nothing is calculated automatically.
+              </p>
+              <LinkButton
+                href={`/admin/clients/${row.retreatId}/charge-balance`}
+                size="lg"
+                class="text-base font-semibold"
+              >
+                Charge final balance
               </LinkButton>
             </CardContent>
           </Card>
