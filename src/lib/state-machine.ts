@@ -56,6 +56,33 @@ export const RETREAT_STATES = [
 
 export type RetreatState = (typeof RETREAT_STATES)[number];
 
+/**
+ * Human-readable label for a retreat state, for admin/client chips. Keeps the
+ * raw enum out of the UI (no underscores). Falls back to a title-cased
+ * de-underscored form for any unmapped/legacy value.
+ */
+const RETREAT_STATUS_LABELS: Record<RetreatState, string> = {
+  draft: 'Draft',
+  awaiting_consents: 'Awaiting consents',
+  awaiting_deposit: 'Awaiting deposit',
+  awaiting_dates: 'Awaiting dates',
+  scheduled: 'Scheduled',
+  in_progress: 'In progress',
+  awaiting_final_charge: 'Processing final charge',
+  completed: 'Completed',
+  final_charge_failed: 'Final charge failed',
+  cancelled: 'Cancelled',
+};
+
+export function retreatStatusLabel(state: string): string {
+  if (state in RETREAT_STATUS_LABELS) {
+    return RETREAT_STATUS_LABELS[state as RetreatState];
+  }
+  // Legacy/unknown: de-underscore + sentence-case.
+  const s = state.replace(/_/g, ' ');
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 const ALLOWED: Record<RetreatState, readonly RetreatState[]> = {
   draft: ['awaiting_consents', 'cancelled'],
   awaiting_consents: ['awaiting_deposit', 'cancelled'],
@@ -63,8 +90,11 @@ const ALLOWED: Record<RetreatState, readonly RetreatState[]> = {
   // jump to `scheduled` stays in the graph so any in-flight retreats
   // already at awaiting_deposit can still complete via confirmDates.
   awaiting_deposit: ['awaiting_dates', 'scheduled', 'cancelled'],
-  awaiting_dates: ['scheduled', 'cancelled'],
-  scheduled: ['in_progress', 'cancelled'],
+  // v0.29.x: a manual final charge can fire as soon as the deposit is paid,
+  // so awaiting_dates / scheduled can jump straight to awaiting_final_charge
+  // (decoupled from the confirm-dates -> in_progress staging).
+  awaiting_dates: ['scheduled', 'awaiting_final_charge', 'cancelled'],
+  scheduled: ['in_progress', 'awaiting_final_charge', 'cancelled'],
   in_progress: ['awaiting_final_charge', 'cancelled'],
   awaiting_final_charge: ['completed', 'final_charge_failed', 'cancelled'],
   final_charge_failed: ['completed', 'cancelled'],
@@ -796,6 +826,59 @@ export const transitions = {
       retreatId: args.retreatId,
       to: 'awaiting_final_charge',
       totalActualCents: out.totalActualCents,
+    });
+  },
+
+  /**
+   * (any post-deposit state) → awaiting_final_charge, for the MANUAL final
+   * charge (v0.29.x). Unlike submitCompletion there is no day-count math: the
+   * admin types the exact amount. We stash `total_actual_cents = deposit +
+   * chargeAmount` so the downstream balance math (markCompleted amount, the
+   * retry cron's `total - deposit`, recovery emails) all resolve to exactly
+   * the entered amount. Idempotent: a retreat already in awaiting_final_charge
+   * is left as-is (the caller proceeds to charge).
+   */
+  async beginFinalCharge(args: {
+    retreatId: RetreatId;
+    actor: Actor;
+    chargeAmountCents: number;
+  }): Promise<void> {
+    if (!Number.isInteger(args.chargeAmountCents) || args.chargeAmountCents <= 0) {
+      throw new Error('beginFinalCharge: chargeAmountCents must be a positive integer');
+    }
+    const { db } = await getDb();
+    await db.transaction(async (tx) => {
+      const [r] = await tx.select().from(retreats).where(eq(retreats.id, args.retreatId));
+      if (!r) throw new Error(`retreat not found: ${args.retreatId}`);
+      if (r.state === 'awaiting_final_charge') return; // already mid-charge
+      assertTransition(r.state, 'awaiting_final_charge');
+
+      const depRows = await tx
+        .select({ amountCents: payments.amountCents })
+        .from(payments)
+        .where(
+          and(
+            eq(payments.retreatId, args.retreatId),
+            eq(payments.kind, 'deposit'),
+            eq(payments.status, 'succeeded'),
+          ),
+        );
+      const depositCents = depRows.reduce((acc, p) => acc + p.amountCents, 0);
+
+      await tx
+        .update(retreats)
+        .set({
+          state: 'awaiting_final_charge',
+          totalActualCents: depositCents + args.chargeAmountCents,
+          updatedAt: new Date(),
+        })
+        .where(eq(retreats.id, args.retreatId));
+    });
+    log.info('state_transition', {
+      retreatId: args.retreatId,
+      to: 'awaiting_final_charge',
+      manual: true,
+      chargeAmountCents: args.chargeAmountCents,
     });
   },
 

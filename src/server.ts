@@ -17,6 +17,7 @@ import { adminCancelRoute } from './routes/admin/cancel.js';
 import { adminClientsDetailRoute } from './routes/admin/clients-detail.js';
 import { adminClientsNewRoute } from './routes/admin/clients-new.js';
 import { adminCompleteRoute } from './routes/admin/complete.js';
+import { adminChargeBalanceRoute } from './routes/admin/charge-balance.js';
 import { adminConfirmDatesRoute } from './routes/admin/confirm-dates.js';
 import { adminConsentPdfRoute } from './routes/admin/consent-pdf.js';
 import { adminAuditRoute } from './routes/admin/audit.js';
@@ -205,6 +206,7 @@ if (webhookOnly) {
   // swallows them.
   app.route('/admin/clients', adminConfirmDatesRoute);
   app.route('/admin/clients', adminCompleteRoute);
+  app.route('/admin/clients', adminChargeBalanceRoute);
   app.route('/admin/clients', adminRefundRoute);
   app.route('/admin/clients', adminReconcileRoute);
   app.route('/admin/clients', adminCancelRoute);
