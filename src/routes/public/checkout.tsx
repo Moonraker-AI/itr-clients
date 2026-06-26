@@ -25,6 +25,7 @@ import {
   getCheckoutSession,
   upsertCustomer,
 } from '../../lib/stripe.js';
+import { reconcileDepositForRetreat } from '../../lib/state-machine.js';
 import {
   Badge,
   Card,
@@ -231,6 +232,22 @@ publicCheckoutRoute.get('/:token/checkout/success', async (c) => {
     }
   } else if (sessionId?.startsWith('cs_dryrun_')) {
     paid = true;
+  }
+
+  // Safety net: do not depend on the webhook having landed. If Stripe says
+  // this session is paid, record the deposit now (idempotent) so the client
+  // is never stranded in awaiting_deposit because a webhook was missed or
+  // delayed. Best-effort: a failure here just falls back to the old
+  // "processing" view, and the reconcile cron will catch it later.
+  if (paid) {
+    try {
+      await reconcileDepositForRetreat(ctx.retreatId, { kind: 'system' });
+    } catch (err) {
+      log.error('checkout_success_reconcile_failed', {
+        retreatId: ctx.retreatId,
+        error: (err as Error).message,
+      });
+    }
   }
 
   // Pull the latest deposit row (set by the Stripe webhook). May be missing

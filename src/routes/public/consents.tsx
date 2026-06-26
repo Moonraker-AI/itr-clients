@@ -166,15 +166,51 @@ publicConsentsRoute.get('/:token', async (c) => {
   let nextStep: unknown;
   switch (ctx.retreatState) {
     case 'awaiting_consents':
-      nextStep = next ? (
-        <LinkButton href={`/c/${ctx.clientToken}/consents`} size="lg">
-          Continue with {next.title}
-        </LinkButton>
-      ) : (
-        <p class="text-sm text-muted-foreground">
-          All consents are signed. We are preparing your deposit checkout - you will receive a follow-up
-          email.
-        </p>
+      // Surface the deposit step up front, but locked, so the client sees
+      // where they are headed and what unlocks it. The real "Pay deposit"
+      // button (the awaiting_deposit case below) only appears once every
+      // required consent is signed and the state machine advances.
+      nextStep = (
+        <div class="space-y-4">
+          {next ? (
+            <LinkButton href={`/c/${ctx.clientToken}/consents`} size="lg" class="w-full sm:w-auto">
+              Continue with {next.title}
+            </LinkButton>
+          ) : (
+            <p class="text-sm text-muted-foreground">
+              All consents are signed. We are preparing your deposit checkout - this unlocks in a
+              moment, and we will email you the link too.
+            </p>
+          )}
+
+          <div class="rounded-lg border border-dashed border-border bg-muted/30 p-4">
+            <Button
+              size="lg"
+              variant="secondary"
+              disabled
+              class="w-full text-base font-semibold opacity-60"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                class="h-5 w-5"
+                aria-hidden="true"
+              >
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+              Pay deposit
+            </Button>
+            <p class="mt-2 text-center text-xs text-muted-foreground">
+              Unlocks once all your documents are signed.
+            </p>
+          </div>
+        </div>
       );
       break;
     case 'awaiting_deposit':
@@ -188,7 +224,11 @@ publicConsentsRoute.get('/:token', async (c) => {
             All consents are signed. Continue to your deposit to confirm
             your retreat.
           </p>
-          <LinkButton href={`/c/${ctx.clientToken}/checkout`} size="lg">
+          <LinkButton
+            href={`/c/${ctx.clientToken}/checkout`}
+            size="lg"
+            class="w-full justify-center py-6 text-lg font-semibold shadow-sm sm:w-auto sm:px-10"
+          >
             Pay deposit
           </LinkButton>
         </div>

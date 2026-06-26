@@ -11,6 +11,7 @@ import { cronStateTransitionsRoute } from './routes/api/cron-state-transitions.j
 import { cronRetryFailedChargesRoute } from './routes/api/cron-retry-failed-charges.js';
 import { cronScanBouncesRoute } from './routes/api/cron-scan-bounces.js';
 import { cronWeeklyDigestRoute } from './routes/api/cron-weekly-digest.js';
+import { cronReconcileDepositsRoute } from './routes/api/cron-reconcile-deposits.js';
 import { authSessionRoute } from './routes/api/auth-session.js';
 import { adminCancelRoute } from './routes/admin/cancel.js';
 import { adminClientsDetailRoute } from './routes/admin/clients-detail.js';
@@ -27,6 +28,7 @@ import { adminInquiriesRoute } from './routes/admin/inquiries.js';
 import { adminPayoutsRoute } from './routes/admin/payouts.js';
 import { adminPricingRoute } from './routes/admin/pricing.js';
 import { adminRefundRoute } from './routes/admin/refund.js';
+import { adminReconcileRoute } from './routes/admin/reconcile.js';
 import { adminLoginRoute } from './routes/auth/login.js';
 import { requireAuth } from './lib/auth.js';
 import { publicCheckoutRoute } from './routes/public/checkout.js';
@@ -204,6 +206,7 @@ if (webhookOnly) {
   app.route('/admin/clients', adminConfirmDatesRoute);
   app.route('/admin/clients', adminCompleteRoute);
   app.route('/admin/clients', adminRefundRoute);
+  app.route('/admin/clients', adminReconcileRoute);
   app.route('/admin/clients', adminCancelRoute);
   app.route('/admin/clients', adminExportRoute);
   app.route('/admin/clients', adminConsentPdfRoute);
@@ -243,6 +246,7 @@ if (webhookOnly) {
   app.route('/api/cron', cronRetryFailedChargesRoute);
   app.route('/api/cron', cronScanBouncesRoute);
   app.route('/api/cron', cronWeeklyDigestRoute);
+  app.route('/api/cron', cronReconcileDepositsRoute);
 }
 
 app.notFound((c) => c.json({ error: 'not_found' }, 404));
