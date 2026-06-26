@@ -57,10 +57,13 @@ gcloud run services add-iam-policy-binding "itr-client-hq" \
   --member="serviceAccount:${RUNTIME_SA}" \
   --role="roles/run.invoker" >/dev/null
 
-# Pass X-Cron-Secret header when env is bound. Mirrors the other cron scripts.
-HEADERS_FLAG=()
+# Pass X-Cron-Secret header when env is bound. NOTE: `jobs create` uses
+# `--headers`, `jobs update` uses `--update-headers` (different flag names).
+CREATE_HEADERS_FLAG=()
+UPDATE_HEADERS_FLAG=()
 if [[ -n "${CRON_SHARED_SECRET:-}" ]]; then
-  HEADERS_FLAG=(--update-headers="X-Cron-Secret=${CRON_SHARED_SECRET}")
+  CREATE_HEADERS_FLAG=(--headers="X-Cron-Secret=${CRON_SHARED_SECRET}")
+  UPDATE_HEADERS_FLAG=(--update-headers="X-Cron-Secret=${CRON_SHARED_SECRET}")
   echo "==> X-Cron-Secret header will be set on the job"
 fi
 
@@ -77,7 +80,7 @@ if gcloud scheduler jobs describe "${JOB_NAME}" \
     --oidc-service-account-email="${RUNTIME_SA}" \
     --oidc-token-audience="${SERVICE_URL}" \
     --attempt-deadline=300s \
-    "${HEADERS_FLAG[@]}"
+    "${UPDATE_HEADERS_FLAG[@]}"
 else
   echo "==> creating new job ${JOB_NAME}"
   gcloud scheduler jobs create http "${JOB_NAME}" \
@@ -91,7 +94,7 @@ else
     --oidc-token-audience="${SERVICE_URL}" \
     --attempt-deadline=300s \
     --description="Deposit safety net: reconcile awaiting_deposit retreats against Stripe every 2h" \
-    "${HEADERS_FLAG[@]}"
+    "${CREATE_HEADERS_FLAG[@]}"
 fi
 
 echo
