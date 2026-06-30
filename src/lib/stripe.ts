@@ -814,6 +814,51 @@ export async function retrievePaymentIntent(
 }
 
 /**
+ * Retrieve a PaymentMethod's type (e.g. 'card', 'us_bank_account'). Used by
+ * the `customer.updated` webhook to fill `payment_method_type` when syncing
+ * a client's new default payment method (set via the Stripe Billing Portal,
+ * DESIGN §6 failure recovery, M6 fix v0.29.x). No card-level detail is
+ * fetched or stored, only the method-type string.
+ */
+export async function retrievePaymentMethodType(
+  paymentMethodId: string,
+): Promise<string | null> {
+  if (dryRun()) return null;
+  const client = getClient()!;
+  const pm = await client.paymentMethods.retrieve(paymentMethodId);
+  return pm.type;
+}
+
+/**
+ * Read a customer's current default payment method straight from Stripe.
+ * Belt-and-suspenders companion to the `customer.updated` webhook sync
+ * (M6 fix, v0.29.x): called from the Billing Portal return route so the
+ * saved PM is fresh even if the webhook hasn't landed yet (delivery lag,
+ * or the client closes the tab before the event arrives).
+ */
+export interface CustomerDefaultPaymentMethod {
+  paymentMethodId: string;
+  paymentMethodType: string | null;
+}
+
+export async function getCustomerDefaultPaymentMethod(
+  stripeCustomerId: string,
+): Promise<CustomerDefaultPaymentMethod | null> {
+  if (dryRun()) return null;
+  const client = getClient()!;
+  const customer = await client.customers.retrieve(stripeCustomerId, {
+    expand: ['invoice_settings.default_payment_method'],
+  });
+  if (customer.deleted) return null;
+  const pm = customer.invoice_settings?.default_payment_method;
+  if (!pm) return null;
+  if (typeof pm === 'string') {
+    return { paymentMethodId: pm, paymentMethodType: await retrievePaymentMethodType(pm) };
+  }
+  return { paymentMethodId: pm.id, paymentMethodType: pm.type };
+}
+
+/**
  * Retrieve a Checkout Session - used by the success page to confirm payment.
  */
 export async function getCheckoutSession(

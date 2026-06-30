@@ -26,7 +26,11 @@ import { bodyLimit } from 'hono/body-limit';
 import type Stripe from 'stripe';
 
 import { log } from '../../lib/phi-redactor.js';
-import { retrievePaymentIntent, verifyWebhookSignature } from '../../lib/stripe.js';
+import {
+  retrievePaymentIntent,
+  retrievePaymentMethodType,
+  verifyWebhookSignature,
+} from '../../lib/stripe.js';
 import {
   IllegalTransitionError,
   transitions,
@@ -235,6 +239,26 @@ async function dispatch(event: Stripe.Event): Promise<void> {
       }
       return;
     }
+    case 'customer.updated': {
+      // M6 fix (v0.29.x): the Stripe Billing Portal "update payment method"
+      // flow (src/routes/public/payment.tsx) sets the new card as the
+      // customer's invoice_settings.default_payment_method but, before this
+      // fix, NOTHING wrote that back to stripe_customers.default_payment_
+      // method_id - so every retry (cron or admin manual charge-balance)
+      // kept hitting the client's OLD card forever. This is the write-back.
+      const customer = event.data.object as Stripe.Customer;
+      const defaultPm = customer.invoice_settings?.default_payment_method;
+      const paymentMethodId =
+        typeof defaultPm === 'string' ? defaultPm : (defaultPm?.id ?? null);
+      if (!paymentMethodId) {
+        // customer.updated fires for unrelated changes too (name, email,
+        // address). Only act when a default PM is actually present - never
+        // null out an existing good value on an unrelated event.
+        return;
+      }
+      await syncDefaultPaymentMethod(customer.id, paymentMethodId, event.id);
+      return;
+    }
     case 'transfer.created':
     case 'transfer.updated': {
       // Phase C (v0.26.0). Destination charges create a Transfer
@@ -357,6 +381,49 @@ async function upsertPayoutFromTransfer(
       amountCents: transfer.amount,
     });
   }
+}
+
+/**
+ * Write a client's new default payment method back to stripe_customers
+ * (see the `customer.updated` case above). Idempotent: re-delivery of the
+ * same event just overwrites with the same value.
+ */
+async function syncDefaultPaymentMethod(
+  stripeCustomerId: string,
+  paymentMethodId: string,
+  eventId: string,
+): Promise<void> {
+  const { getDb } = await import('../../db/client.js');
+  const { stripeCustomers } = await import('../../db/schema.js');
+  const { eq } = await import('drizzle-orm');
+  const { db } = await getDb();
+
+  const paymentMethodType = await retrievePaymentMethodType(paymentMethodId);
+
+  const updated = await db
+    .update(stripeCustomers)
+    .set({
+      defaultPaymentMethodId: paymentMethodId,
+      paymentMethodType,
+      updatedAt: new Date(),
+    })
+    .where(eq(stripeCustomers.stripeCustomerId, stripeCustomerId))
+    .returning({ clientId: stripeCustomers.clientId });
+
+  if (updated.length === 0) {
+    // No stripe_customers row for this Stripe customer id - shouldn't
+    // happen (the row is created at deposit time before any portal flow
+    // exists), but don't throw: nothing in our DB to update.
+    log.warn('stripe_webhook_default_pm_sync_no_customer_row', {
+      eventId,
+    });
+    return;
+  }
+
+  log.info('stripe_webhook_default_pm_synced', {
+    eventId,
+    clientId: updated[0]!.clientId,
+  });
 }
 
 async function derivePaymentAttempt(retreatId: string): Promise<number> {
