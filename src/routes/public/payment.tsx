@@ -13,7 +13,7 @@ import { and, desc, eq } from 'drizzle-orm';
 
 import { getDb } from '../../db/client.js';
 import { auditEvents, retreats, stripeCustomers } from '../../db/schema.js';
-import { createPortalSession } from '../../lib/stripe.js';
+import { createPortalSession, getCustomerDefaultPaymentMethod } from '../../lib/stripe.js';
 import { log } from '../../lib/phi-redactor.js';
 import {
   Alert,
@@ -69,10 +69,41 @@ publicPaymentRoute.get('/:token/payment-updated', async (c) => {
   const token = c.req.param('token');
   const { db } = await getDb();
   const [r] = await db
-    .select({ id: retreats.id })
+    .select({ id: retreats.id, clientId: retreats.clientId })
     .from(retreats)
     .where(eq(retreats.clientToken, token));
   if (!r) return c.notFound();
+
+  // Belt-and-suspenders write-back: don't rely solely on the
+  // `customer.updated` webhook (delivery lag, or the client lands here
+  // before the event arrives). Fetch the live default PM from Stripe and
+  // sync it now so an immediate retry already has the right card.
+  const [sc] = await db
+    .select({ stripeCustomerId: stripeCustomers.stripeCustomerId })
+    .from(stripeCustomers)
+    .where(eq(stripeCustomers.clientId, r.clientId));
+  if (sc) {
+    try {
+      const pm = await getCustomerDefaultPaymentMethod(sc.stripeCustomerId);
+      if (pm) {
+        await db
+          .update(stripeCustomers)
+          .set({
+            defaultPaymentMethodId: pm.paymentMethodId,
+            paymentMethodType: pm.paymentMethodType,
+            updatedAt: new Date(),
+          })
+          .where(eq(stripeCustomers.clientId, r.clientId));
+      }
+    } catch (err) {
+      // Non-fatal: the webhook is still the source of truth. Don't block
+      // the confirmation page on a Stripe hiccup.
+      log.warn('payment_updated_pm_sync_failed', {
+        retreatId: r.id,
+        error: (err as Error).message,
+      });
+    }
+  }
 
   return c.html(
     <Layout title="Payment method updated - Intensive Therapy Retreats">
