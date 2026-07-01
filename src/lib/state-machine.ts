@@ -97,7 +97,11 @@ const ALLOWED: Record<RetreatState, readonly RetreatState[]> = {
   scheduled: ['in_progress', 'awaiting_final_charge', 'cancelled'],
   in_progress: ['awaiting_final_charge', 'cancelled'],
   awaiting_final_charge: ['completed', 'final_charge_failed', 'cancelled'],
-  final_charge_failed: ['completed', 'cancelled'],
+  // A failed final charge can be retried. The cron path re-charges in place
+  // and jumps straight to `completed`, but a manual admin retry re-enters
+  // `awaiting_final_charge` via beginFinalCharge (to re-stamp the amount),
+  // so that edge must be legal too. A second decline loops back here.
+  final_charge_failed: ['completed', 'awaiting_final_charge', 'cancelled'],
   completed: [],
   cancelled: [],
 };

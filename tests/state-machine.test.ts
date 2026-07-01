@@ -20,6 +20,8 @@ describe('state-machine: canTransition', () => {
       ['awaiting_final_charge', 'completed'],
       ['awaiting_final_charge', 'final_charge_failed'],
       ['final_charge_failed', 'completed'],
+      // manual admin retry re-enters the charging state to re-stamp the amount
+      ['final_charge_failed', 'awaiting_final_charge'],
     ];
     for (const [from, to] of happyPath) {
       assert.equal(canTransition(from, to), true, `${from} → ${to} should be allowed`);
