@@ -1141,34 +1141,35 @@ export type RetryOutcome =
   | 'skipped_max_attempts'
   | 'skipped_concurrent';
 
-export async function retryFailedCharge(args: {
-  retreatId: string;
-  actor: Actor;
-}): Promise<{ outcome: RetryOutcome; attempt: number }> {
-  const { db, pool } = await getDb();
-
-  // Advisory lock keyed on the retreat id (M9 fix #2). Prevents two
-  // concurrent retry passes (cron + manual fire, two cron retries) from
-  // racing on the same retreat. We hold the lock across the entire
-  // function on a dedicated pool client; the lock auto-releases when
-  // the client is released, even on uncaught throw.
+/**
+ * Advisory lock keyed on the retreat id (M9 fix #2). Prevents two
+ * concurrent charge passes (cron retry + manual admin charge, two cron
+ * retries) from racing on the same retreat. We hold the lock across the
+ * whole callback on a dedicated pool client; the lock auto-releases when
+ * the client is released, even on uncaught throw.
+ *
+ * Returns `{ acquired: false }` when another holder has the lock; callers
+ * decide how to surface that (cron skips, admin UI shows a retry hint).
+ */
+export async function withRetreatChargeLock<T>(
+  retreatId: string,
+  fn: () => Promise<T>,
+): Promise<{ acquired: true; result: T } | { acquired: false }> {
+  const { pool } = await getDb();
   const client = await pool.connect();
   // 32-bit signed key derived from the retreat id; collision space is
   // small but a random false-positive only delays one retry by a day.
-  const key = retreatIdToLockKey(args.retreatId);
+  const key = retreatIdToLockKey(retreatId);
   const acquired = await client.query<{ pg_try_advisory_lock: boolean }>(
     'SELECT pg_try_advisory_lock($1) AS pg_try_advisory_lock',
     [key],
   );
   if (!acquired.rows[0]?.pg_try_advisory_lock) {
     client.release();
-    log.info('retry_failed_charge_concurrent_skipped', {
-      retreatId: args.retreatId,
-    });
-    return { outcome: 'skipped_concurrent', attempt: 0 };
+    return { acquired: false };
   }
   try {
-    return await runRetry(args);
+    return { acquired: true, result: await fn() };
   } finally {
     // Audit tier-9: a failed unlock leaves the session-scoped lock held
     // until the pg connection is physically closed (NOT when client.release()
@@ -1179,12 +1180,26 @@ export async function retryFailedCharge(args: {
       .query('SELECT pg_advisory_unlock($1)', [key])
       .catch((err: unknown) => {
         log.warn('retry_advisory_unlock_failed', {
-          retreatId: args.retreatId,
+          retreatId,
           error: (err as Error).message,
         });
       });
     client.release();
   }
+}
+
+export async function retryFailedCharge(args: {
+  retreatId: string;
+  actor: Actor;
+}): Promise<{ outcome: RetryOutcome; attempt: number }> {
+  const locked = await withRetreatChargeLock(args.retreatId, () => runRetry(args));
+  if (!locked.acquired) {
+    log.info('retry_failed_charge_concurrent_skipped', {
+      retreatId: args.retreatId,
+    });
+    return { outcome: 'skipped_concurrent', attempt: 0 };
+  }
+  return locked.result;
 }
 
 export type ReconcileDepositOutcome =

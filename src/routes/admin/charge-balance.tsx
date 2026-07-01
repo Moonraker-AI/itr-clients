@@ -24,7 +24,11 @@ import { therapistCanAccess } from '../../lib/auth.js';
 import { ensureCsrfToken, verifyCsrfToken } from '../../lib/csrf.js';
 import { log } from '../../lib/phi-redactor.js';
 import { formatCents } from '../../lib/pricing.js';
-import { retreatStatusLabel, transitions } from '../../lib/state-machine.js';
+import {
+  retreatStatusLabel,
+  transitions,
+  withRetreatChargeLock,
+} from '../../lib/state-machine.js';
 import { chargeFinalBalance } from '../../lib/stripe.js';
 import {
   AdminShell,
@@ -201,76 +205,98 @@ adminChargeBalanceRoute.post('/:id/charge-balance', async (c) => {
   if (!sc || !sc.defaultPaymentMethodId) {
     return c.redirect(`/admin/clients/${id}/charge-balance?error=${encodeURIComponent('No saved payment method on file. A paid deposit captures it.')}`);
   }
+  // Capture the narrowed value; the null-guard above doesn't flow into the
+  // lock closure below.
+  const paymentMethodId = sc.defaultPaymentMethodId;
 
-  // Move into awaiting_final_charge (stamps total_actual_cents = deposit +
-  // this amount, so the retry/recovery machinery resolves to exactly this).
-  try {
-    await transitions.beginFinalCharge({
-      retreatId: id,
-      actor: { kind: 'system' },
-      chargeAmountCents: amountCents,
-    });
-  } catch (err) {
-    log.warn('admin_charge_balance_begin_failed', { retreatId: id, error: (err as Error).message });
-    return c.redirect(`/admin/clients/${id}/charge-balance?error=${encodeURIComponent((err as Error).message).slice(0, 200)}`);
-  }
-
-  // Idempotency: stable per attempt so an accidental double-submit dedupes at
-  // Stripe, while a deliberate later charge gets a fresh key.
-  const finalRows = await db
-    .select({ id: payments.id })
-    .from(payments)
-    .where(and(eq(payments.retreatId, id), eq(payments.kind, 'final')));
-  const attempt = finalRows.length + 1;
-
-  const [t] = await db
-    .select({
-      connectAccountId: therapists.stripeConnectAccountId,
-      payoutPct: therapists.therapistPayoutPct,
-    })
-    .from(therapists)
-    .where(eq(therapists.id, owner.therapistId));
-
-  const charge = await chargeFinalBalance({
-    retreatId: id,
-    clientId: owner.clientId,
-    stripeCustomerId: sc.stripeCustomerId,
-    paymentMethodId: sc.defaultPaymentMethodId,
-    amountCents,
-    idempotencyKey: `final:${id}:${attempt}`,
-    connectAccountId: t?.connectAccountId ?? null,
-    payoutPct: t?.payoutPct ?? null,
-  });
-
-  if (charge.status === 'succeeded') {
+  // Serialize with the retry cron (and any concurrent admin submit) via the
+  // same per-retreat advisory lock retryFailedCharge takes. Without it a
+  // cron retry mid-flight could race this charge between its state read and
+  // its Stripe call.
+  const locked = await withRetreatChargeLock(id, async () => {
+    // Move into awaiting_final_charge (stamps total_actual_cents = deposit +
+    // this amount, so the retry/recovery machinery resolves to exactly this).
     try {
-      await transitions.markCompleted({
+      await transitions.beginFinalCharge({
         retreatId: id,
         actor: { kind: 'system' },
-        stripePaymentIntentId: charge.paymentIntentId,
-        ...(charge.chargeId ? { stripeChargeId: charge.chargeId } : {}),
-        amountCents,
+        chargeAmountCents: amountCents,
       });
     } catch (err) {
-      log.error('CRITICAL_manual_final_charge_succeeded_but_db_write_failed', {
-        retreatId: id,
-        paymentIntentId: charge.paymentIntentId,
-        amountCents,
-        error: (err as Error).message,
-      });
-      throw err;
+      log.warn('admin_charge_balance_begin_failed', { retreatId: id, error: (err as Error).message });
+      return c.redirect(`/admin/clients/${id}/charge-balance?error=${encodeURIComponent((err as Error).message).slice(0, 200)}`);
     }
-  } else {
-    await transitions.markFinalChargeFailed({
-      retreatId: id,
-      actor: { kind: 'system' },
-      failureCode: charge.failureCode ?? 'unknown',
-      failureMessage: charge.failureMessage ?? '',
-      ...(charge.paymentIntentId ? { stripePaymentIntentId: charge.paymentIntentId } : {}),
-      amountCents,
-      ...(charge.clientSecret ? { clientSecret: charge.clientSecret } : {}),
-    });
-  }
 
-  return c.redirect(`/admin/clients/${id}`);
+    // Idempotency: stable per attempt so an accidental double-submit dedupes at
+    // Stripe, while a deliberate later charge gets a fresh key.
+    const finalRows = await db
+      .select({ id: payments.id, status: payments.status })
+      .from(payments)
+      .where(and(eq(payments.retreatId, id), eq(payments.kind, 'final')));
+    const attempt = finalRows.length + 1;
+    // Failure-count numbering (cron-aligned: succeeded rows don't count).
+    // Drives the retry-exhausted escalation when this failure is the third.
+    const failedAttempt =
+      finalRows.filter((p) => p.status !== 'succeeded').length + 1;
+
+    const [t] = await db
+      .select({
+        connectAccountId: therapists.stripeConnectAccountId,
+        payoutPct: therapists.therapistPayoutPct,
+      })
+      .from(therapists)
+      .where(eq(therapists.id, owner.therapistId));
+
+    const charge = await chargeFinalBalance({
+      retreatId: id,
+      clientId: owner.clientId,
+      stripeCustomerId: sc.stripeCustomerId,
+      paymentMethodId,
+      amountCents,
+      idempotencyKey: `final:${id}:${attempt}`,
+      connectAccountId: t?.connectAccountId ?? null,
+      payoutPct: t?.payoutPct ?? null,
+    });
+
+    if (charge.status === 'succeeded') {
+      try {
+        await transitions.markCompleted({
+          retreatId: id,
+          actor: { kind: 'system' },
+          stripePaymentIntentId: charge.paymentIntentId,
+          ...(charge.chargeId ? { stripeChargeId: charge.chargeId } : {}),
+          amountCents,
+        });
+      } catch (err) {
+        log.error('CRITICAL_manual_final_charge_succeeded_but_db_write_failed', {
+          retreatId: id,
+          paymentIntentId: charge.paymentIntentId,
+          amountCents,
+          error: (err as Error).message,
+        });
+        throw err;
+      }
+    } else {
+      await transitions.markFinalChargeFailed({
+        retreatId: id,
+        actor: { kind: 'system' },
+        failureCode: charge.failureCode ?? 'unknown',
+        failureMessage: charge.failureMessage ?? '',
+        ...(charge.paymentIntentId ? { stripePaymentIntentId: charge.paymentIntentId } : {}),
+        amountCents,
+        ...(charge.clientSecret ? { clientSecret: charge.clientSecret } : {}),
+        attempt: failedAttempt,
+      });
+    }
+
+    return c.redirect(`/admin/clients/${id}`);
+  });
+
+  if (!locked.acquired) {
+    log.info('admin_charge_balance_concurrent_skipped', { retreatId: id });
+    return c.redirect(
+      `/admin/clients/${id}/charge-balance?error=${encodeURIComponent('Another charge attempt for this retreat is running right now. Wait a minute, refresh the client page, then try again if it is still unpaid.')}`,
+    );
+  }
+  return locked.result;
 });
