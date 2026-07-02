@@ -985,6 +985,120 @@ export const transitions = {
   },
 
   /**
+   * (awaiting_final_charge | final_charge_failed) → awaiting_final_charge.
+   *
+   * Records an IN-FLIGHT delayed-settlement final charge (ACH bank debit:
+   * Stripe confirms the PaymentIntent synchronously with status
+   * `processing` and the money lands ~4 business days later). This is not
+   * a success and not a failure, so the retreat parks in
+   * awaiting_final_charge ("Processing final charge") and the payments row
+   * is written as `pending`, mirroring the Pending badge in the Stripe
+   * dashboard. Settlement resolves via webhook:
+   *   - payment_intent.succeeded       → markCompleted (row → succeeded)
+   *   - payment_intent.payment_failed  → markFinalChargeFailed (row →
+   *     failed, retry machinery takes over)
+   *
+   * Idempotent on `stripePaymentIntentId`. If the row for this PI already
+   * reached a terminal status (webhooks can arrive out of order: a late
+   * payment_intent.processing must never downgrade a settled outcome), the
+   * whole call is a no-op. Completed/cancelled retreats are likewise
+   * never touched.
+   */
+  async markFinalChargeProcessing(args: {
+    retreatId: RetreatId;
+    actor: Actor;
+    stripePaymentIntentId: string;
+    stripeChargeId?: string;
+    amountCents: number;
+  }): Promise<void> {
+    const { db } = await getDb();
+
+    const out = await db.transaction(async (tx) => {
+      const [r] = await tx.select().from(retreats).where(eq(retreats.id, args.retreatId));
+      if (!r) throw new Error(`retreat not found: ${args.retreatId}`);
+
+      if (r.state === 'completed' || r.state === 'cancelled') {
+        return { changed: false, reason: 'terminal_state' as const };
+      }
+
+      // Out-of-order webhook guard: never downgrade a row that already
+      // settled (succeeded via markCompleted or failed via
+      // markFinalChargeFailed).
+      const [existing] = await tx
+        .select({ status: payments.status })
+        .from(payments)
+        .where(
+          and(
+            eq(payments.stripePaymentIntentId, args.stripePaymentIntentId),
+            sql`${payments.kind} <> 'refund'`,
+          ),
+        );
+      if (existing && existing.status !== 'pending') {
+        return { changed: false, reason: 'row_already_settled' as const };
+      }
+
+      const alreadyAwaiting = r.state === 'awaiting_final_charge';
+      if (!alreadyAwaiting) assertTransition(r.state, 'awaiting_final_charge');
+
+      await tx
+        .insert(payments)
+        .values({
+          retreatId: args.retreatId,
+          kind: 'final',
+          stripePaymentIntentId: args.stripePaymentIntentId,
+          stripeChargeId: args.stripeChargeId ?? null,
+          amountCents: args.amountCents,
+          status: 'pending',
+          attemptCount: 1,
+          lastAttemptedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: payments.stripePaymentIntentId,
+          // Match the partial unique index `WHERE kind != 'refund'`.
+          targetWhere: sql`${payments.kind} <> 'refund'`,
+          set: {
+            status: 'pending',
+            stripeChargeId: args.stripeChargeId ?? null,
+            updatedAt: new Date(),
+            lastAttemptedAt: new Date(),
+          },
+        });
+
+      // Audit the in-flight debit once, on first sight of this PI - not
+      // again on redundant webhook acks of the same PI (`existing` was
+      // selected above, pre-upsert).
+      if (!existing) {
+        const { actorType, actorId } = actorToColumns(args.actor);
+        await tx.insert(auditEvents).values({
+          retreatId: args.retreatId,
+          actorType,
+          actorId,
+          eventType: 'final_charge_processing',
+          payload: {
+            stripe_payment_intent_id: args.stripePaymentIntentId,
+            amount_cents: args.amountCents,
+          },
+        });
+      }
+
+      if (alreadyAwaiting) return { changed: true, reason: 'row_only' as const };
+
+      await tx
+        .update(retreats)
+        .set({ state: 'awaiting_final_charge', updatedAt: new Date() })
+        .where(eq(retreats.id, args.retreatId));
+      return { changed: true, reason: 'state_flip' as const };
+    });
+
+    log.info('final_charge_processing', {
+      retreatId: args.retreatId,
+      paymentIntentId: args.stripePaymentIntentId,
+      changed: out.changed,
+      reason: out.reason,
+    });
+  },
+
+  /**
    * awaiting_final_charge → final_charge_failed.
    *
    * Records a failed final-charge attempt. Idempotent on
@@ -1134,11 +1248,13 @@ export const transitions = {
  */
 export type RetryOutcome =
   | 'succeeded'
+  | 'processing' // ACH debit in flight - webhook settles it, no retry needed
   | 'failed_will_retry'
   | 'failed_exhausted'
   | 'skipped_no_pm'
   | 'skipped_zero_balance'
   | 'skipped_max_attempts'
+  | 'skipped_processing' // a prior debit is still pending - retrying would double-charge
   | 'skipped_concurrent';
 
 /**
@@ -1303,6 +1419,8 @@ async function runRetry(args: {
   // Read prior final-kind payments. Attempt cap counts only non-succeeded
   // rows (M9 fix #16) - a succeeded row means the charge already cleared,
   // so there's no reason to count it against the 3-attempt budget.
+  // `pending` rows are excluded too: an in-flight ACH debit is neither a
+  // success nor a failure yet.
   const priorRows = await db
     .select({
       id: payments.id,
@@ -1311,6 +1429,17 @@ async function runRetry(args: {
     })
     .from(payments)
     .where(and(eq(payments.retreatId, args.retreatId), eq(payments.kind, 'final')));
+
+  // DOUBLE-CHARGE GUARD: a pending row means a delayed-settlement debit
+  // (ACH) is still in flight at Stripe. Minting a fresh PI now would debit
+  // the client twice. Sit out until the webhook settles it either way.
+  if (priorRows.some((p) => p.status === 'pending')) {
+    log.info('retry_failed_charge_skipped_processing', {
+      retreatId: args.retreatId,
+    });
+    return { outcome: 'skipped_processing', attempt: 0 };
+  }
+
   const priorFailedAttempts = priorRows.filter(
     (p) => p.status !== 'succeeded',
   ).length;
@@ -1413,6 +1542,19 @@ async function runRetry(args: {
       throw err;
     }
     return { outcome: 'succeeded', attempt };
+  }
+
+  if (charge.status === 'processing') {
+    // Delayed settlement (ACH). Park in awaiting_final_charge; the
+    // payment_intent.succeeded / payment_failed webhook resolves it.
+    await transitions.markFinalChargeProcessing({
+      retreatId: args.retreatId,
+      actor: args.actor,
+      stripePaymentIntentId: charge.paymentIntentId,
+      ...(charge.chargeId ? { stripeChargeId: charge.chargeId } : {}),
+      amountCents: balance,
+    });
+    return { outcome: 'processing', attempt };
   }
 
   await transitions.markFinalChargeFailed({
