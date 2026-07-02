@@ -45,6 +45,7 @@ cronRetryFailedChargesRoute.post('/retry-failed-charges', async (c) => {
 
   let attempted = 0;
   let succeeded = 0;
+  let pendingProcessing = 0;
   let failedWillRetry = 0;
   let failedExhausted = 0;
   let skippedTooSoon = 0;
@@ -72,8 +73,12 @@ cronRetryFailedChargesRoute.post('/retry-failed-charges', async (c) => {
     // Only failed/requires_action attempts count toward the 3-attempt cap
     // (M9 fix #16). A succeeded row means the charge already cleared, so
     // keeping it in the count would prematurely block a recovery retry
-    // after a state flip-flop.
-    const priorAttempts = finalRows.filter((p) => p.status !== 'succeeded').length;
+    // after a state flip-flop. A pending row (in-flight ACH debit) is
+    // neither: it must not inflate the cap, and retryFailedCharge refuses
+    // to mint a new PI while one exists (double-charge guard).
+    const priorAttempts = finalRows.filter(
+      (p) => p.status !== 'succeeded' && p.status !== 'pending',
+    ).length;
     if (priorAttempts >= 3) {
       // Already exhausted; cron is a no-op for this retreat.
       continue;
@@ -111,6 +116,10 @@ cronRetryFailedChargesRoute.post('/retry-failed-charges', async (c) => {
         case 'succeeded':
           succeeded += 1;
           break;
+        case 'processing':
+          // ACH debit minted and in flight; webhook settles it.
+          pendingProcessing += 1;
+          break;
         case 'failed_will_retry':
         case 'skipped_no_pm':
           failedWillRetry += 1;
@@ -120,6 +129,7 @@ cronRetryFailedChargesRoute.post('/retry-failed-charges', async (c) => {
           break;
         case 'skipped_zero_balance':
         case 'skipped_max_attempts':
+        case 'skipped_processing':
         case 'skipped_concurrent':
           // Don't count toward the retry tallies.
           break;
@@ -135,6 +145,7 @@ cronRetryFailedChargesRoute.post('/retry-failed-charges', async (c) => {
     candidates: candidates.length,
     attempted,
     succeeded,
+    pendingProcessing,
     failedWillRetry,
     failedExhausted,
     skippedTooSoon,
@@ -145,6 +156,7 @@ cronRetryFailedChargesRoute.post('/retry-failed-charges', async (c) => {
     candidates: candidates.length,
     attempted,
     succeeded,
+    pendingProcessing,
     failedWillRetry,
     failedExhausted,
     skippedTooSoon,

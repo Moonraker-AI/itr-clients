@@ -457,6 +457,7 @@ export async function createDepositCheckoutSession(
 export type FinalChargeStatus =
   | 'succeeded'
   | 'requires_action' // 3DS / authentication_required
+  | 'processing' // delayed settlement (ACH bank debit) - money lands in ~4 business days
   | 'failed';
 
 export interface ChargeFinalBalanceArgs {
@@ -612,13 +613,32 @@ export async function chargeFinalBalance(
   }
 }
 
-function mapPaymentIntent(pi: Stripe.PaymentIntent): ChargeFinalBalanceResult {
+/** Exported for tests only. */
+export function mapPaymentIntent(pi: Stripe.PaymentIntent): ChargeFinalBalanceResult {
   let chargeId: string | null = null;
   if (typeof pi.latest_charge === 'string') chargeId = pi.latest_charge;
   else if (pi.latest_charge) chargeId = pi.latest_charge.id;
   if (pi.status === 'succeeded') {
     return {
       status: 'succeeded',
+      paymentIntentId: pi.id,
+      chargeId,
+      failureCode: null,
+      failureMessage: null,
+      clientSecret: null,
+      dryRun: false,
+    };
+  }
+  if (pi.status === 'processing') {
+    // ACH (us_bank_account) debits confirm synchronously but settle days
+    // later. This is NOT a failure: the money is in flight. Callers park
+    // the retreat in awaiting_final_charge and let the
+    // payment_intent.succeeded / payment_intent.payment_failed webhook
+    // resolve it. Mapping this to `failed` (the pre-fix behaviour) flipped
+    // the retreat to final_charge_failed while Stripe showed Pending, and
+    // primed the retry cron to double-debit the client 24h later.
+    return {
+      status: 'processing',
       paymentIntentId: pi.id,
       chargeId,
       failureCode: null,

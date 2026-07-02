@@ -197,6 +197,38 @@ async function dispatch(event: Stripe.Event): Promise<void> {
       });
       return;
     }
+    case 'payment_intent.processing': {
+      // Delayed-settlement final charge (ACH bank debit) confirmed and in
+      // flight. The handler-side charge path already records this
+      // synchronously; this webhook is the redundant ack that self-heals
+      // the row if the server died between the Stripe call and the DB
+      // write. markFinalChargeProcessing is idempotent and refuses to
+      // downgrade a row that already settled (out-of-order delivery).
+      const pi = event.data.object as Stripe.PaymentIntent;
+      const meta = pi.metadata ?? {};
+      const retreatId = meta['retreat_id'];
+      const paymentKind = meta['payment_kind'];
+      if (paymentKind !== 'final') {
+        log.info('stripe_webhook_pi_processing_skipped', { type: event.type, paymentKind });
+        return;
+      }
+      if (!retreatId) {
+        log.warn('stripe_webhook_missing_retreat_id', { type: event.type });
+        return;
+      }
+      const chargeId =
+        typeof pi.latest_charge === 'string'
+          ? pi.latest_charge
+          : pi.latest_charge?.id;
+      await transitions.markFinalChargeProcessing({
+        retreatId,
+        actor: { kind: 'stripe', eventId: event.id },
+        stripePaymentIntentId: pi.id,
+        ...(chargeId ? { stripeChargeId: chargeId } : {}),
+        amountCents: pi.amount,
+      });
+      return;
+    }
     case 'payment_intent.payment_failed': {
       const pi = event.data.object as Stripe.PaymentIntent;
       const meta = pi.metadata ?? {};
@@ -439,6 +471,10 @@ async function derivePaymentAttempt(retreatId: string): Promise<number> {
         eq(payments.retreatId, retreatId),
         eq(payments.kind, 'final'),
         ne(payments.status, 'succeeded'),
+        // A pending row is this very PI's in-flight ACH debit (about to be
+        // flipped to failed by this webhook) - counting it AND adding +1
+        // below would double-count the attempt.
+        ne(payments.status, 'pending'),
       ),
     );
   // +1 because this in-flight failure isn't yet recorded.

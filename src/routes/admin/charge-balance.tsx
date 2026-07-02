@@ -7,6 +7,9 @@
  * payment method exists). On success the retreat is marked completed; on
  * failure it lands in final_charge_failed (and the existing retry/recovery
  * machinery takes over, since beginFinalCharge stamps total_actual_cents).
+ * ACH bank debits confirm with PI status `processing` and settle days
+ * later: those park in awaiting_final_charge with a `pending` payments row
+ * (blocking further manual charges) until the Stripe webhook settles them.
  */
 
 import { Hono } from 'hono';
@@ -81,7 +84,23 @@ async function loadCtx(id: string) {
       ),
     );
   const depositPaidCents = depRows.reduce((acc, p) => acc + p.amountCents, 0);
-  return { row, depositPaidCents };
+
+  // An in-flight delayed-settlement debit (ACH: payments row `pending`)
+  // means the client's bank is already being drafted. Charging again now
+  // would double-debit, so the form is locked until the webhook settles it.
+  const [pendingFinal] = await db
+    .select({ id: payments.id })
+    .from(payments)
+    .where(
+      and(
+        eq(payments.retreatId, id),
+        eq(payments.kind, 'final'),
+        eq(payments.status, 'pending'),
+      ),
+    )
+    .limit(1);
+
+  return { row, depositPaidCents, hasPendingFinal: Boolean(pendingFinal) };
 }
 
 adminChargeBalanceRoute.get('/:id/charge-balance', async (c) => {
@@ -94,7 +113,8 @@ adminChargeBalanceRoute.get('/:id/charge-balance', async (c) => {
   const csrfToken = ensureCsrfToken(c);
   const user = c.get('user');
   const clientName = `${ctx.row.clientFirstName} ${ctx.row.clientLastName}`;
-  const chargeable = ctx.depositPaidCents > 0 && !TERMINAL.has(ctx.row.state);
+  const chargeable =
+    ctx.depositPaidCents > 0 && !TERMINAL.has(ctx.row.state) && !ctx.hasPendingFinal;
 
   return c.html(
     <Layout title="Charge final balance - ITR Clients">
@@ -112,7 +132,9 @@ adminChargeBalanceRoute.get('/:id/charge-balance', async (c) => {
               <AlertDescription>
                 {ctx.depositPaidCents === 0
                   ? 'No deposit has been recorded yet, so there is no saved payment method to charge.'
-                  : `Status is ${retreatStatusLabel(ctx.row.state)}; this retreat cannot be charged.`}
+                  : ctx.hasPendingFinal
+                    ? 'A bank debit for this retreat is still processing at Stripe (ACH takes a few business days to settle). Charging again now would debit the client twice. This page unlocks automatically once Stripe reports the debit as paid or failed.'
+                    : `Status is ${retreatStatusLabel(ctx.row.state)}; this retreat cannot be charged.`}
               </AlertDescription>
             </Alert>
           ) : null}
@@ -214,6 +236,23 @@ adminChargeBalanceRoute.post('/:id/charge-balance', async (c) => {
   // cron retry mid-flight could race this charge between its state read and
   // its Stripe call.
   const locked = await withRetreatChargeLock(id, async () => {
+    // DOUBLE-CHARGE GUARD: a pending final-kind payments row means a
+    // delayed-settlement debit (ACH) is already in flight at Stripe.
+    // Checked inside the lock so a webhook settling it can't race us.
+    const [pendingRow] = await db
+      .select({ id: payments.id })
+      .from(payments)
+      .where(
+        and(eq(payments.retreatId, id), eq(payments.kind, 'final'), eq(payments.status, 'pending')),
+      )
+      .limit(1);
+    if (pendingRow) {
+      log.info('admin_charge_balance_blocked_pending_debit', { retreatId: id });
+      return c.redirect(
+        `/admin/clients/${id}/charge-balance?error=${encodeURIComponent('A bank debit for this retreat is still processing at Stripe. Charging again would debit the client twice. Wait for the pending debit to settle.')}`,
+      );
+    }
+
     // Move into awaiting_final_charge (stamps total_actual_cents = deposit +
     // this amount, so the retry/recovery machinery resolves to exactly this).
     try {
@@ -276,6 +315,18 @@ adminChargeBalanceRoute.post('/:id/charge-balance', async (c) => {
         });
         throw err;
       }
+    } else if (charge.status === 'processing') {
+      // Delayed settlement (ACH bank debit). Not a failure: Stripe shows
+      // this PI as Pending and the money lands in a few business days.
+      // Park in awaiting_final_charge with a pending payments row; the
+      // payment_intent.succeeded / payment_failed webhook settles it.
+      await transitions.markFinalChargeProcessing({
+        retreatId: id,
+        actor: { kind: 'system' },
+        stripePaymentIntentId: charge.paymentIntentId,
+        ...(charge.chargeId ? { stripeChargeId: charge.chargeId } : {}),
+        amountCents,
+      });
     } else {
       await transitions.markFinalChargeFailed({
         retreatId: id,
